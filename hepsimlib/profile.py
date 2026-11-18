@@ -49,7 +49,7 @@ class Profile:
     release_url: str = None
     bank_subsystem: str = "component"
     bank_prefix: str = "component."
-    bank_reasons: MappingProxyType = field(default=BANK_REASONS)
+    bank_reasons: MappingProxyType = field(default_factory=lambda: BANK_REASONS)   # Python 3.11 refuses a mappingproxy default
     bank_validation_reason: str = BANK_VALIDATION_REASON
 
     def __post_init__(self):
