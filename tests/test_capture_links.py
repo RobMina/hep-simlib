@@ -8,6 +8,7 @@ from hepsimlib.capture.audit import audit
 from test_capture_audit import BIG, tables  # noqa: F401 -- reuse the shared synthetic capture fixture
 
 TEXT = "manifest|1\ng4|synthetic\nphysicsTag|synthetic-not-physics\n"
+ME = 0.51099895
 
 
 def make_links(tables):
