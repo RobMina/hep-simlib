@@ -1,0 +1,44 @@
+# Geant4 11.3.2 (conda-forge, with its data packages) plus hepsimlib-recorder and the Python readers.
+#   apptainer build hepsimlib-g4.sif recorder/container/hepsimlib-g4.def      (run from the repository root)
+# One Geant4 thread per process; no GPU. The hepsimlib Python package itself comes from the checkout (PYTHONPATH),
+# so the image changes only when Geant4 or the recorder changes.
+Bootstrap: docker
+From: mambaorg/micromamba:2.10.0-ubuntu24.04
+
+%files
+    recorder/CMakeLists.txt /opt/hepsimlib-recorder/CMakeLists.txt
+    recorder/src /opt/hepsimlib-recorder/src
+
+%post
+    set -eu
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    micromamba install -y -n base -c conda-forge --strict-channel-priority \
+        geant4=11.3.2 cmake=3.31 make cxx-compiler python=3.12 numpy pandas awkward uproot pytest
+    micromamba clean -a -y
+    # conda activation scripts set the Geant4 data variables; keep them for %environment
+    cat /opt/conda/etc/conda/activate.d/*.sh > /opt/conda/geant4-env.sh
+    . /opt/conda/geant4-env.sh
+    export PATH=/opt/conda/bin:$PATH
+    cmake -S /opt/hepsimlib-recorder -B /tmp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/conda \
+          -DCMAKE_PREFIX_PATH=/opt/conda
+    cmake --build /tmp/build -j 8
+    cmake --install /tmp/build
+    rm -rf /tmp/build
+    geant4-config --version > /opt/hepsimlib-recorder/GEANT4_VERSION
+    sha256sum /opt/hepsimlib-recorder/CMakeLists.txt /opt/hepsimlib-recorder/src/* > /opt/hepsimlib-recorder/SOURCE.sha256
+
+%environment
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export PATH=/opt/conda/bin:$PATH
+    . /opt/conda/geant4-env.sh
+
+%test
+    . /opt/conda/geant4-env.sh
+    test -x /opt/conda/bin/hepsimlib-recorder
+    test "$(cat /opt/hepsimlib-recorder/GEANT4_VERSION)" = "11.3.2"
+    python3 -c "import numpy, pandas, awkward, uproot"
+
+%labels
+    org.opencontainers.image.title hepsimlib-g4
+    org.opencontainers.image.licenses Apache-2.0
+    org.hepsimlib.geant4 11.3.2

@@ -106,9 +106,9 @@ Banks as library files (manifest, content hash, `save_library` / `load_library`,
 ## Open work
 
 - A recorder that produces banks from a full Geant4 run of the component: the contract it must meet is in
-  [component training](component-training.md). An experiment's own recorder (one exists for the Mu2e Geant4 framework)
-  can be used today; an experiment-neutral Geant4 recorder (a record-only fast-simulation model on the component's
-  envelope) is planned for this package.
+  [component training](component-training.md). The package's own recorder, `hepsimlib-recorder`, records any GDML
+  component ([recorder](recorder.md)); an experiment's own recorder can feed the same converter by writing the same
+  tables.
 - A detector adapter that removes double counting and validates one unchanged bank against nominal and altered
   layouts (moved, rotated, neighbouring components), against full Geant4.
 - Finite-state support is intentionally narrow: replay needs the exact recorded entrance state. A useful continuous

@@ -1,0 +1,408 @@
+"""Linked capture audits and energy accounting; synthetic records, not transport physics (ported from
+mu2e-fastsim-core a058b04)."""
+import numpy as np
+import pytest
+
+from hepsimlib.capture import accounting as capture_accounting, tables as capture
+from hepsimlib.capture.audit import audit
+from test_capture_audit import BIG, tables  # noqa: F401 -- reuse the shared synthetic capture fixture
+
+TEXT = "manifest|1\ng4|synthetic\nphysicsTag|synthetic-not-physics\n"
+
+
+def make_links(tables):
+    """Links aligned with the tracks table: the child of event 2 comes from its primary's second step."""
+    t, e = tables["tracks"], tables["events"]
+    child = t["parent"] != 0
+    links = {field: t[field].copy() for field in (*capture.EVENT, "index", "track", "parent")}
+    links.update(creatorStep=np.where(child, 1, -1).astype(np.int64), bornOnSurface=np.zeros(len(child), bool),
+                 exitAtBirth=np.zeros(len(child), bool))
+    n = len(e["event"])
+    manifest = {field: e[field].copy() for field in capture.EVENT}
+    manifest.update(linksPresent=np.ones(n, bool), linksIDsMatch=np.ones(n, bool), schema=np.ones(n, np.int32),
+                    g4Version=np.full(n, "synthetic", object), manifest=np.full(n, TEXT, object),
+                    manifestHash=np.full(n, capture.fnv1a(TEXT), object), nLinks=e["nTracks"].astype(np.int64),
+                    nBirthExits=np.zeros(n, np.int64))
+    return {"links": links, "manifest": manifest}
+
+
+def add_birth_exit(tables, links, *, index=2, track=BIG + 3, pdg=None, energy=1.):
+    """Append a reason-4 child of event 2's second step that starts on the +z face, outside the component."""
+    t, c, e, s = tables["tracks"], tables["classifications"], tables["events"], tables["steps"]
+    row = 2
+    for name, table in (("tracks", t), ("classifications", c)):
+        for field, value in table.items():
+            tables[name][field] = np.concatenate([value, value[row:row + 1]])
+    t, c = tables["tracks"], tables["classifications"]
+    t["index"][-1], t["track"][-1], c["index"][-1], c["track"][-1] = index, track, index, track
+    if pdg is not None:
+        t["pdg"][-1] = c["pdg"][-1] = pdg
+    t["steps"][-1], t["secondaries"][-1], t["reason"][-1], t["status"][-1] = 0, 0, 4, 2
+    t["entered"][-1], c["killed"][-1], c["status"][-1] = False, True, 0
+    for prefix in ("begin_", "end_"):
+        for field, value in (("lx", 0.), ("ly", 0.), ("lz", 1.), ("x", 12.), ("y", 13.), ("z", 17.),
+                             ("lpx", 0.), ("lpy", 0.), ("lpz", 1.), ("px", 1.), ("py", 0.), ("pz", 0.),
+                             ("energy", energy), ("kinetic", energy), ("mass", 0.), ("charge", 0.)):
+            t[prefix + field][-1] = value
+        t[prefix + "volume"][-1] = BIG + 2
+        t[prefix + "material"][-1] = "G4_Galactic"
+    for field in capture.STATE:
+        t["end_" + field][-1] = t["begin_" + field][-1]
+    for field in capture.FLOATS:
+        t["entrance_" + field][-1] = 0. if field != "weight" else 1.
+    t["entrance_volume"][-1] = -1
+    for field in capture.STATE:
+        c["state_" + field][-1] = t["begin_" + field][-1]
+    parent = np.flatnonzero((t["event"] == BIG + 2) & (t["parent"] == 0))[0]
+    t["secondaries"][parent] += 1
+    s["secondaries"][3] += 1
+    e["nTracks"][1] += 1
+    e["nClassifications"][1] += 1
+    lk = links["links"]
+    for field, value in lk.items():
+        lk[field] = np.concatenate([value, value[row:row + 1]])
+    for field in (*capture.EVENT, "index", "track", "parent"):
+        lk[field][-1] = t[field][-1]
+    lk["creatorStep"][-1], lk["exitAtBirth"][-1], lk["bornOnSurface"][-1] = 1, True, True
+    links["manifest"]["nLinks"][1] += 1
+    links["manifest"]["nBirthExits"][1] += 1
+
+
+def test_audit_with_links(tables):
+    links = make_links(tables)
+    result = audit(tables, 2, links=links)
+    assert result["links_checked"] and result["exits_at_birth"] == 0 and result["surface_born_secondaries"] == 0
+    assert not audit(tables, 2)["links_checked"]
+
+
+@pytest.mark.parametrize("fault", ["misaligned", "creator", "primary-creator", "hash", "census", "births", "present"])
+def test_bad_links_rejected(tables, fault):
+    links = make_links(tables)
+    lk, mf = links["links"], links["manifest"]
+    child = np.flatnonzero(lk["parent"] != 0)[0]
+    if fault == "misaligned":
+        lk["track"][child] += 1
+    elif fault == "creator":
+        lk["creatorStep"][child] = 0
+    elif fault == "primary-creator":
+        lk["creatorStep"][0] = 0
+    elif fault == "hash":
+        mf["manifestHash"][0] = "0" * 16
+    elif fault == "census":
+        mf["nLinks"][0] += 1
+    elif fault == "births":
+        mf["nBirthExits"][0] = 1
+    else:
+        mf["linksPresent"][1] = False
+    with pytest.raises(ValueError):
+        audit(tables, 2, links=links)
+
+
+def test_exit_at_birth_needs_its_link(tables):
+    links = make_links(tables)
+    add_birth_exit(tables, links)
+    result = audit(tables, 2, links=links)
+    assert result["exits_at_birth"] == 1
+    with pytest.raises(ValueError):
+        audit(tables, 2)
+    links["links"]["exitAtBirth"][-1] = False
+    with pytest.raises(ValueError):
+        audit(tables, 2, links=links)
+
+
+def test_manifest_must_agree_between_events(tables):
+    links = make_links(tables)
+    other = TEXT + "extra\n"
+    links["manifest"]["manifest"][1] = other
+    links["manifest"]["manifestHash"][1] = capture.fnv1a(other)
+    with pytest.raises(ValueError, match="manifest differs"):
+        audit(tables, 2, links=links)
+
+
+def test_fnv1a_reference_values():
+    assert capture.fnv1a("") == "cbf29ce484222325"
+    assert capture.fnv1a("a") == "af63dc4c8601ec8c"
+
+
+def set_processes(tables, process):
+    tables["steps"]["post_process"][:] = process
+
+
+def balance(tables):
+    """Energies that close every step: E_pre - E_post - deposit - E_children = 0, with state continuity kept."""
+    s, t, c = tables["steps"], tables["tracks"], tables["classifications"]
+    s["pre_energy"][:] = [10., 10., 10., 10., 3.]
+    s["post_energy"][:] = [10., 10., 10., 5., 2.]
+    t["begin_energy"][:], t["end_energy"][:], t["entrance_energy"][:] = [10., 10., 3.], [10., 5., 2.], [10., 10., 3.]
+    c["state_energy"][:] = t["begin_energy"]
+
+
+def test_accounting_closes_on_a_balanced_capture(tables):
+    balance(tables)
+    set_processes(tables, "eIoni")
+    result = capture_accounting.report(tables, make_links(tables), 2)
+    assert result["energy_accounting_passed"] and result["conserving_steps_out_of_tolerance"] == 0
+    assert result["nuclear_steps"] == 0 and not result["bank_admissible"]
+
+
+def test_accounting_flags_unaccounted_energy_but_reports_nuclear_terms(tables):
+    balance(tables)
+    set_processes(tables, "eIoni")
+    tables["steps"]["deposit"][3] += 1e-6
+    result = capture_accounting.report(tables, make_links(tables), 2)
+    assert result["conserving_steps_out_of_tolerance"] == 1 and not result["energy_accounting_passed"]
+    assert result["worst_step"]["index"] == 1 and result["event_closure_out_of_tolerance"] == 0
+    set_processes(tables, "hadElastic")
+    result = capture_accounting.report(tables, make_links(tables), 2)
+    assert result["energy_accounting_passed"] and result["nuclear_steps"] == result["inside_steps"]
+    assert result["nuclear_processes"] == ["hadElastic"]
+    assert result["totals_MeV"]["nuclear_q"] == pytest.approx(-1e-6, abs=1e-12)
+
+
+def test_accounting_counts_exits_at_birth(tables):
+    balance(tables)
+    set_processes(tables, "eIoni")
+    links = make_links(tables)
+    add_birth_exit(tables, links)
+    result = capture_accounting.report(tables, links, 2)
+    assert result["exits_at_birth"] == 1 and result["totals_MeV"]["exit_at_birth"] == pytest.approx(1.)
+
+
+def test_accounting_requires_links(tables):
+    with pytest.raises(ValueError):
+        capture_accounting.report(tables, None, 2)
+
+
+def muon_decay(tables, links, loss=0.):
+    """Event 2: the muon's second step is a decay to its electron child plus two neutrinos exiting at birth."""
+    balance(tables)
+    set_processes(tables, "eIoni")
+    s, t, c = tables["steps"], tables["tracks"], tables["classifications"]
+    s["post_process"][3] = "Decay"
+    for table, prefixes in ((t, ("begin_", "end_", "entrance_")), (c, ("state_",))):
+        for prefix in prefixes:
+            table[prefix + "mass"][2] = ME
+    s["pre_mass"][4] = s["post_mass"][4] = ME
+    set_muon_end(tables, energy=5., local_p=(0., 0., 0.))
+    share = (5. - ME - loss) / 2.
+    add_birth_exit(tables, links, index=2, track=BIG + 3, pdg=12, energy=share)
+    add_birth_exit(tables, links, index=3, track=BIG + 4, pdg=-14, energy=share)
+
+
+def set_muon_end(tables, *, energy, local_p):
+    """The decaying muon's post-step state (step 3, track row 1): energy and local momentum, mass from both."""
+    s, t, e = tables["steps"], tables["tracks"], tables["events"]
+    local = np.asarray(local_p, float)
+    world = e["rotation"][1].reshape(3, 3) @ local
+    mass = np.sqrt(energy ** 2 - local @ local)
+    for table, prefix, row in ((s, "post_", 3), (t, "end_", 1)):
+        table[prefix + "energy"][row], table[prefix + "mass"][row] = energy, mass
+        table[prefix + "kinetic"][row] = energy - mass
+        for axis, value in zip("xyz", local):
+            table[prefix + "lp" + axis][row] = value
+        for axis, value in zip("xyz", world):
+            table[prefix + "p" + axis][row] = value
+
+
+def test_declared_muon_decay_term(tables):
+    links = make_links(tables)
+    muon_decay(tables, links)
+    result = capture_accounting.report(tables, links, 2)
+    assert result["energy_accounting_passed"] and result["decay_steps"] == 1
+    assert result["declared_muon_decay_steps"] == 1 and result["decay_steps_out_of_tolerance"] == 0
+    assert result["totals_MeV"]["declared_decay_q"] == pytest.approx(ME)
+    assert "G4MuonDecayChannel" in result["declared_terms"]
+
+
+def test_extra_loss_in_a_muon_decay_fails(tables):
+    links = make_links(tables)
+    muon_decay(tables, links, loss=1e-6)
+    result = capture_accounting.report(tables, links, 2)
+    assert not result["energy_accounting_passed"] and result["decay_steps_out_of_tolerance"] == 1
+    failure = result["decay_failures"][0]
+    assert failure["parent_pdg"] == 13 and failure["children_pdg"] == [-14, 11, 12]
+    assert failure["residual_MeV"] == pytest.approx(1e-6, abs=1e-12)
+
+
+@pytest.mark.parametrize("loss,passes", [(0., True), (1e-6, False)])
+def test_muon_decay_in_flight_loses_m_e_in_the_muon_rest_frame(tables, loss, passes):
+    links = make_links(tables)
+    muon_decay(tables, links)
+    set_muon_end(tables, energy=5., local_p=(0., 0., 4.))
+    s, t, c = tables["steps"], tables["tracks"], tables["classifications"]
+    kids = np.flatnonzero(t["parent"] != 0)
+    parent = np.array([s["post_p" + a][3] for a in "xyz"])
+    child_p = np.array([t["begin_p" + a][kids].sum() for a in "xyz"])
+    deficit = (ME * 3. + (parent - child_p) @ parent) / 5. + loss
+    row = len(t["pdg"]) - 1
+    other = t["begin_energy"][kids].sum() - t["begin_energy"][row]
+    energy = 10. - 2. - other - deficit
+    for table, prefixes in ((t, ("begin_", "end_")), (c, ("state_",))):
+        for prefix in prefixes:
+            table[prefix + "energy"][row] = table[prefix + "kinetic"][row] = energy
+    result = capture_accounting.report(tables, links, 2)
+    assert result["energy_accounting_passed"] is passes and result["declared_muon_decay_steps"] == 1
+    assert result["decay_steps_out_of_tolerance"] == (0 if passes else 1)
+    assert abs(deficit - ME) > 1e-3
+    if passes:
+        assert result["totals_MeV"]["declared_decay_q"] == pytest.approx(deficit, rel=1e-12)
+
+
+def test_undeclared_decay_channel_fails(tables):
+    links = make_links(tables)
+    muon_decay(tables, links)
+    for table in (tables["tracks"], tables["classifications"]):
+        table["pdg"][1] = 211
+    result = capture_accounting.report(tables, links, 2)
+    assert result["declared_muon_decay_steps"] == 0 and result["decay_steps_out_of_tolerance"] == 1
+    assert result["decay_failures"][0]["q_MeV"] == pytest.approx(ME) and not result["energy_accounting_passed"]
+
+
+@pytest.mark.parametrize("pdg,passes", [(1000010030, True), (11, False)])
+def test_decay_without_products_is_declared_only_for_nuclei(tables, pdg, passes):
+    balance(tables)
+    set_processes(tables, "eIoni")
+    tables["steps"]["post_process"][4] = "Decay"
+    for table in (tables["tracks"], tables["classifications"]):
+        table["pdg"][2] = pdg
+    result = capture_accounting.report(tables, make_links(tables), 2)
+    assert result["energy_accounting_passed"] is passes
+    assert result["declared_nucleus_kill_steps"] == (1 if passes else 0)
+    assert result["nucleus_kill_pdgs"] == ([pdg] if passes else [])
+    if not passes:
+        assert result["decay_failures"][0]["children_pdg"] == [] and result["decay_failures"][0]["parent_pdg"] == 11
+
+
+@pytest.mark.parametrize("pdg,mass", [(1000130270, 25126.5), (2212, 938.272)])
+def test_em_recoil_nucleus_takes_its_mass_from_the_material(tables, pdg, mass):
+    balance(tables)
+    set_processes(tables, "CoulombScat")
+    t, c = tables["tracks"], tables["classifications"]
+    for table, prefixes in ((t, ("begin_", "end_", "entrance_")), (c, ("state_",))):
+        for prefix in prefixes:
+            table[prefix + "mass"][2] = mass
+            table[prefix + "energy"][2] += mass
+    t["pdg"][2] = c["pdg"][2] = pdg
+    for prefix in ("pre_", "post_"):
+        tables["steps"][prefix + "energy"][4] += mass
+        tables["steps"][prefix + "mass"][4] = mass
+    result = capture_accounting.report(tables, make_links(tables), 2)
+    assert result["energy_accounting_passed"] and result["em_nuclear_recoils"] == 1
+    assert result["totals_MeV"]["medium_electron_mass"] == pytest.approx(mass)
+
+
+@pytest.mark.parametrize("spread,passes", [(5e-10, True), (2e-8, True), (2e-6, False)])
+def test_electron_mass_spread_is_held_to_rounding_level(tables, spread, passes):
+    balance(tables)
+    set_processes(tables, "eIoni")
+    t, c = tables["tracks"], tables["classifications"]
+    t["pdg"][0] = c["pdg"][0] = 11
+    for row, steps, mass in ((0, [0, 1], ME), (2, [4], ME + spread)):
+        for table, prefixes in ((t, ("begin_", "end_", "entrance_")), (c, ("state_",))):
+            for prefix in prefixes:
+                table[prefix + "mass"][row] = mass
+        tables["steps"]["pre_mass"][steps] = tables["steps"]["post_mass"][steps] = mass
+    if passes:
+        result = capture_accounting.report(tables, make_links(tables), 2)
+        assert result["totals_MeV"]["medium_electron_mass"] == pytest.approx(ME + spread / 2, rel=1e-12)
+    else:
+        with pytest.raises(ValueError, match="inconsistent electron masses"):
+            capture_accounting.report(tables, make_links(tables), 2)
+
+
+def test_low_energy_decay_product_keeps_the_rounding_level_mass_bound(tables):
+    balance(tables)
+    set_processes(tables, "eIoni")
+    tables["steps"]["post_process"][3] = "Decay"
+    t = tables["tracks"]
+    t["pdg"][0] = tables["classifications"]["pdg"][0] = 11
+    set_track_mass(tables, 0, [0, 1], ME)
+    set_track_mass(tables, 2, [4], ME * (1. + 4e-6))
+    with pytest.raises(ValueError, match="inconsistent electron masses"):
+        capture_accounting.report(tables, make_links(tables), 2)
+
+
+# A 38 GeV positron from a boosted pi0 Dalitz decay in a 100 GeV pi- capture, and ten times its offset.
+@pytest.mark.parametrize("offset,from_decay,passes", [(8.9e-7, True, True), (8.9e-7, False, False),
+                                                      (8.9e-6, True, False)])
+def test_boosted_decay_product_mass_bound_grows_with_energy(offset, from_decay, passes):
+    bound = capture_accounting.electron_mass_bound(ME, np.array([38396.63]), np.array([from_decay]))
+    assert bool(offset <= bound[0]) == passes
+    assert capture_accounting.electron_mass_bound(ME, np.array([2.]), np.array([True]))[0] == pytest.approx(
+        capture_accounting.MASS_ROUNDING * ME, rel=1e-9)
+
+
+def set_track_mass(tables, row, steps, mass):
+    """Give one track and its steps a dynamic mass, keeping state continuity."""
+    t, c = tables["tracks"], tables["classifications"]
+    for table, prefixes in ((t, ("begin_", "end_", "entrance_")), (c, ("state_",))):
+        for prefix in prefixes:
+            table[prefix + "mass"][row] = mass
+    if len(steps):
+        tables["steps"]["pre_mass"][steps] = tables["steps"]["post_mass"][steps] = mass
+
+
+@pytest.mark.parametrize("mass,passes", [(4e-6, True), (1e-3, False)])
+def test_converting_photon_leaves_its_rounding_level_dynamic_mass(tables, mass, passes):
+    links = make_links(tables)
+    balance(tables)
+    set_processes(tables, "eIoni")
+    tables["steps"]["post_process"][3] = "conv"
+    t, c = tables["tracks"], tables["classifications"]
+    t["pdg"][1] = c["pdg"][1] = 22
+    set_track_mass(tables, 1, [2, 3], mass)
+    add_birth_exit(tables, links, pdg=-11, energy=5. - mass)
+    result = capture_accounting.report(tables, links, 2)
+    assert result["energy_accounting_passed"] is passes
+    assert result["declared_photon_mass_steps"] == (1 if passes else 0)
+    if passes:
+        assert result["totals_MeV"]["declared_photon_mass"] == pytest.approx(mass, rel=1e-12)
+        assert "G4PhotonDynamicMass" in result["declared_terms"]
+    else:
+        assert result["worst_step"]["residual_MeV"] == pytest.approx(mass, rel=1e-9)
+
+
+# k240: a 3.5 GeV decay positron 3e-9 MeV above m_e annihilates at rest; 2e-7 here clears the step tolerance at 10 MeV.
+@pytest.mark.parametrize("extra,passes", [(0., True), (1e-6, False)])
+def test_annihilating_positron_leaves_its_rounding_level_mass_offset(tables, extra, passes):
+    links = make_links(tables)
+    balance(tables)
+    set_processes(tables, "eIoni")
+    tables["steps"]["post_process"][3] = "annihil"
+    t, c = tables["tracks"], tables["classifications"]
+    delta = 2e-7
+    for row, pdg, steps, mass in ((0, 11, [0, 1], ME), (1, -11, [2, 3], ME + delta), (2, 11, [4], ME)):
+        t["pdg"][row] = c["pdg"][row] = pdg
+        set_track_mass(tables, row, steps, mass)
+    add_birth_exit(tables, links, pdg=22, energy=5. + 2. * ME - delta - extra)
+    result = capture_accounting.report(tables, links, 2)
+    assert result["energy_accounting_passed"] is passes
+    assert result["declared_positron_mass_steps"] == 1
+    assert result["totals_MeV"]["declared_positron_mass"] == pytest.approx(delta, rel=1e-6)
+    assert "G4PositronDynamicMass" in result["declared_terms"]
+    if not passes:
+        assert result["worst_step"]["residual_MeV"] == pytest.approx(extra, rel=1e-6)
+
+
+@pytest.mark.parametrize("delta,extra,passes", [(5e-8, 0., True), (5e-8, 1e-6, False), (1e-5, 0., False)])
+def test_decay_boost_term_needs_a_rounding_level_mass_offset(tables, delta, extra, passes):
+    links = make_links(tables)
+    balance(tables)
+    set_processes(tables, "eIoni")
+    tables["steps"]["post_process"][3] = "Decay"
+    t, c = tables["tracks"], tables["classifications"]
+    nominal, dynamic = 0.5, 0.5 * (1. + delta)
+    for row in (0, 1):
+        t["pdg"][row] = c["pdg"][row] = 211
+    set_track_mass(tables, 0, [0, 1], nominal)
+    set_track_mass(tables, 1, [2, 3], dynamic)
+    boost = 10. * (1. - dynamic / nominal)
+    add_birth_exit(tables, links, index=2, track=BIG + 3, pdg=211, energy=1.)
+    t = tables["tracks"]
+    set_track_mass(tables, len(t["pdg"]) - 1, [], nominal)
+    add_birth_exit(tables, links, index=3, track=BIG + 4, pdg=14, energy=4. - boost - extra)
+    result = capture_accounting.report(tables, links, 2)
+    assert result["energy_accounting_passed"] is passes
+    assert result["declared_decay_boost_steps"] == (1 if passes else 0)
+    if passes:
+        assert result["totals_MeV"]["declared_decay_q"] == pytest.approx(boost, rel=1e-9)

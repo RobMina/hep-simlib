@@ -17,10 +17,12 @@ library can be checked, cited, distributed and compared the same way, whatever e
 | `hepsimlib.library.provenance` | the libraries a run actually loaded, pinned or not, for its outputs' provenance |
 | `hepsimlib.library.fidelity` | one validation vocabulary: status levels from *bit-identical* to *not validated*, paired ratios and shapes, shape tests against a stock-vs-stock null, criteria declared and hashed before the held-out read, the bench performance entry |
 | `hepsimlib.component` | component interaction banks: whole Geant4 trials of one finite component (particle tree, deposit steps, first-boundary exits, null outcomes included) replayed exactly in any rigid placement, with a field-free vacuum handoff between placements |
+| `hepsimlib.capture` | recorder output to banks: the strict capture audit, the per-step and per-event energy accounting, and the converter (extra `capture`: pandas, uproot, awkward) |
+| `recorder/` | `hepsimlib-recorder`, a standalone Geant4 application that records complete trials of any GDML component (a box envelope) in any placement, and an Apptainer definition with Geant4 11.3.2 |
 | `hepsimlib.profile` | the few per-experiment settings: allowed subsystems, the device-float and cache variables, the release URL, bank names |
 
 Specifications: [libraries](docs/libraries.md), [component response](docs/component-response.md),
-[recording component trials](docs/component-training.md).
+[recording component trials](docs/component-training.md), [the recorder and the capture tables](docs/recorder.md).
 
 The package depends on NumPy only; the `*_jax` helpers import JAX when called (extra `jax`). It holds no experiment
 names, data or libraries: an experiment package installs its own profile once and keeps its libraries in its own
@@ -56,7 +58,7 @@ Provenance: extracted from `mu2e-fastsim-core` (commit a058b04) and generalized 
 ## Install and test
 
 ```bash
-python -m pip install -e '.[test]'        # add ,jax for the JAX twins
+python -m pip install -e '.[test,capture]'        # add ,jax for the JAX twins
 python -m pytest -q
 ```
 

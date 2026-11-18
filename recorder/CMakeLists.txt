@@ -1,0 +1,12 @@
+# hepsimlib-recorder: a standalone Geant4 application (docs/recorder.md). Needs Geant4 >= 11.2 built with GDML.
+cmake_minimum_required(VERSION 3.16)
+project(hepsimlib-recorder CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(Geant4 11.2 REQUIRED gdml)
+include(${Geant4_USE_FILE})
+add_executable(hepsimlib-recorder src/main.cc src/Config.cc src/Capture.cc src/Output.cc)
+target_include_directories(hepsimlib-recorder PRIVATE src)
+target_link_libraries(hepsimlib-recorder PRIVATE ${Geant4_LIBRARIES})
+target_compile_options(hepsimlib-recorder PRIVATE -Wall -Wextra)
+install(TARGETS hepsimlib-recorder RUNTIME DESTINATION bin)
