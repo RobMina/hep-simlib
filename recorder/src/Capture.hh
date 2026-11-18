@@ -17,6 +17,7 @@
 #include "G4UserStackingAction.hh"
 #include "G4UserSteppingAction.hh"
 #include "G4UserTrackingAction.hh"
+#include "G4VTouchable.hh"
 #include "G4VUserDetectorConstruction.hh"
 #include "G4VUserPrimaryGeneratorAction.hh"
 
@@ -28,7 +29,6 @@ class G4Step;
 class G4StepPoint;
 class G4Track;
 class G4VPhysicalVolume;
-class G4VTouchable;
 
 namespace hsr {
 

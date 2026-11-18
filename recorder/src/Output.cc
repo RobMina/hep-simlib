@@ -254,7 +254,8 @@ void Output::WriteRun(long run, long subrun, long events, const Config& config) 
   if (slash != std::string::npos) gdml = gdml.substr(slash + 1);  // the file name only: no site paths
   int c = 0;
   for (long v : {run, subrun, config.seed, events}) fRunInfo.Set(c++, v);
-  for (const std::string* s : {&config.physicsList, &config.geometryTag, &config.physicsTag, &gdml}) fRunInfo.Set(c++, *s);
+  const std::string* names[] = {&config.physicsList, &config.geometryTag, &config.physicsTag, &gdml};
+  for (const std::string* s : names) fRunInfo.Set(c++, *s);
   fRunInfo.Add();
 }
 
