@@ -1,0 +1,18 @@
+# Smoke capture of the toy slab module: run from recorder/examples (the GDML path is relative).
+#   hepsimlib-recorder FTFP_BERT slab_module.mac
+/control/verbose 0
+/run/verbose 0
+/recorder/gdml slab_module.gdml
+/recorder/envelope module
+/recorder/geometryTag slab-module-v1
+/recorder/physicsTag FTFP_BERT-default-cuts
+/recorder/output slab_module_smoke.root
+/recorder/run 1
+/recorder/subrun 0
+/recorder/seed 20261118
+/run/initialize
+# exact local entrance states on the +y face (y = +30 mm), pointing down: PDG LX LY LZ UX UY UZ KINETIC_MEV COUNT
+/recorder/entrance 13 0 30 0 0 -1 0 1000 5
+/recorder/entrance 11 50 30 10 0 -1 0 20 5
+/recorder/entrance 22 -80 30 -40 0 -1 0 5 5
+/run/beamOn 15

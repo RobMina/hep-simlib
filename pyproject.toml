@@ -13,6 +13,7 @@ dependencies = ["numpy"]
 
 [project.optional-dependencies]
 jax = ["jax"]
+capture = ["pandas", "uproot", "awkward"]
 test = ["pytest"]
 
 [tool.setuptools.packages.find]

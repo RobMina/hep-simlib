@@ -6,6 +6,8 @@ Licensed under the Apache License, Version 2.0 (LICENSE).
 The library core (hepsimlib.library: hashing, axes, domain accounting, manifest, store, registry, dtypes, run
 provenance, fidelity vocabulary), the component interaction banks (hepsimlib.component) and their tests and
 documentation were extracted from mu2e-fastsim-core (commit a058b04) and generalized to be experiment-neutral: the
-Mu2e-specific settings became the experiment profile (hepsimlib.profile). That code carries the copyright above.
+Mu2e-specific settings became the experiment profile (hepsimlib.profile). The capture audit, energy accounting and
+converter (hepsimlib.capture) were extracted from the same commit, without the checks specific to the Mu2e Geant4
+framework; the recorder (recorder/) was written for this package. That code carries the copyright above.
 
 No experiment-internal inputs, conditions, data, libraries or physics results are part of this repository.

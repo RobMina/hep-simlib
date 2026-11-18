@@ -26,10 +26,45 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install
-        run: python -m pip install -e '.[test]'
+        run: python -m pip install -e '.[test,capture]'
       - name: Install JAX (the *_jax twins; skipped where no wheel exists)
         run: python -m pip install jax || echo "no JAX wheel for this Python; the JAX twin tests are skipped"
       - name: Test
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest -q
+
+  recorder:
+    # Builds hepsimlib-recorder against conda-forge Geant4 11.3.2, records the toy slab module, then audits,
+    # energy-accounts and converts the capture to a bank with hepsimlib.capture: the whole chain on real Geant4 output.
+    name: recorder (Geant4 11.3.2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: g4
+          create-args: >-
+            geant4=11.3.2 cmake=3.31 make cxx-compiler python=3.12 numpy pandas awkward uproot pytest
+          cache-environment: true
+      - name: Build the recorder
+        run: |
+          cmake -S recorder -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+          cmake --build build -j 4
+      - name: Record the toy slab module
+        working-directory: recorder/examples
+        run: ../../build/hepsimlib-recorder FTFP_BERT slab_module.mac
+      - name: Audit, account and bank the capture
+        working-directory: recorder/examples
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -m hepsimlib.capture audit slab_module_smoke.root --expected-events 15 --output audit.json
+          python -m hepsimlib.capture account slab_module_smoke.root --expected-events 15 --output accounting.json \
+            | python -c "import json,sys; r=json.load(sys.stdin); print({k: r[k] for k in ('energy_accounting_passed', 'conserving_steps_out_of_tolerance', 'decay_steps_out_of_tolerance', 'event_closure_out_of_tolerance', 'nuclear_processes', 'max_abs_event_closure_MeV')})"
+          python -m hepsimlib.capture bank slab_module_smoke.root --expected-events 15 --output bank.npz
+          python -m hepsimlib.library check bank.npz
