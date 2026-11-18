@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hep-simlib"
+version = "0.1.0"
+description = "Checked response libraries and component interaction banks for HEP fast simulation: manifests, content hashes, domain accounting, a validation vocabulary, and exact replay of recorded component trials"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+jax = ["jax"]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["hepsimlib*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

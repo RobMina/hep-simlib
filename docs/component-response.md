@@ -1,0 +1,116 @@
+# Component interaction banks: local replay
+
+`hepsimlib.component` is a NumPy implementation of geometry-portable interaction libraries: complete Geant4 trials of
+one finite component, recorded once and replayed in any rigid placement of it. It is not a production shower model, a
+complete geometry navigator or an adapter for a detector's existing bank. No trained bank or Geant4 physics validation
+is included in this repository; banks are built by an experiment's recorder ([component training](component-training.md)).
+
+## Boundary contract
+
+A reusable interaction replaces transport **inside one finite component**, not the probability that a source
+particle reaches the detector. The caller transports particles through the actual layout to the component boundary.
+The bank returns all correlated internal deposits and all particles at their first outward boundary crossing.
+Each exiting track is returned to external transport; a later re-entry is a new interaction. Do not also transport
+or deposit the replayed interior explicitly. Detector light/charge/readout simulation remains downstream.
+
+This first implementation supports field-free rectangular envelopes with identical component construction.
+`ComponentType` carries a geometry/material version, physics/cuts version, local half sizes and local-volume count;
+these labels must actually refer to the same construction and physics. It does not verify an external geometry file.
+`Placement` adds a unique instance ID, a proper rotation, translation and local-to-global volume mapping.
+The local envelope is centered at zero. Positions are mm, time ns, momentum MeV/c, total energy and raw deposits MeV.
+Global points are `local @ rotation.T + translation`; vectors are rotated, never translated.
+Boundary comparisons use a fixed 1e-7 mm position tolerance and 1e-12 direction-cosine tolerance; numerically
+ambiguous grazing entries are unsupported. These are numerical tolerances, not tunable physics-matching windows.
+
+A finite segmented component is not invariant under arbitrary internal shifts or rotations. Entrance state comprises
+signed PDG, total energy, local position and full momentum. Reusing an exact local entrance state in a rigidly moved
+copy is allowed; changing impact position, azimuth, energy, thickness, material or local field is not implicitly allowed.
+
+## Array records
+
+All tables are dictionaries of NumPy arrays with a shared first dimension. Three-vectors have shape `(N, 3)`;
+`event` is an integer triplet (e.g. `(run, subrun, event)`), not a bit-packed or floating-point label.
+
+- Incoming particles: `event`, `track`, `parent`, `pdg`, `position`, `momentum`, `energy`, `time`. Track IDs are positive;
+  `parent=-1` means no parent. Momentum is nonzero and total energy must be at least its magnitude.
+- Bank entrances: `pdg`, `position`, `momentum`, `energy`, one row per complete independent trial. Identical entrance
+  states may occur repeatedly, including zero-deposit trials. Positions lie on the envelope and point inward.
+- Three offset arrays partition bank `particles`, `steps` and `exits` by entrance/trial. Every trial has at least
+  the incoming particle as local particle0. Offsets for steps/exits may repeat, preserving empty outcomes.
+- Bank particles: `pdg`, `parent`, `exited`. Local parents precede their children; particle0 has parent-1.
+  `exited` is a boolean; false means the track ends inside the component. Every exited track has exactly one exit.
+  This is first-exit capture, not a shower followed through the external detector and back into the module.
+- Bank steps: `particle`, `volume`, `x0`, `x1`, `p0`, `p1`, `t0`, `t1`, `length`, `edep`. Particle and volume IDs are
+  local, positions are inside the envelope, times are relative to entrance and energy is raw, not quenched/visible.
+  The exporter must include relevant passive deposits if these rows are used for a complete energy ledger.
+- Bank exits: `particle`, `position`, `momentum`, `energy`, `time`; positions lie on the boundary and time is
+  relative to entrance. Emission positions inside the component are not exits. The momentum is the recorded
+  post-step momentum. It usually points outward, but multiple scattering over the last, boundary-limited step can
+  turn it back in (low-energy e±). Such an exit is a Geant4 exit followed by an immediate re-entry:
+  `next_in_vacuum` hands it back to the same placement at distance 0. Replay then needs that entrance state in the
+  bank and otherwise refuses it as `UnsupportedEntrance`.
+- Step lengths are Geant4's true path lengths, and the endpoints include the multiple-scattering lateral
+  displacement, so `|x1 - x0|` can exceed `length`. Both are kept as recorded; no chord rule is applied.
+
+`Library` validates array shape, finite values, offsets, local ancestry, root species, envelope containment and
+entry directions and exits on the boundary. It checks geometry/physics compatibility before sampling. These checks do not establish
+export completeness or Geant4 validity. The exporter must record stopped energy, material rest-mass exchange and
+other terminal terms separately before an energy-closure claim is possible. Total incoming energy is **not** simply
+sum(deposits)+sum(outgoing total energy) for all species/interactions without those terms.
+
+## Replay and selection
+
+`replay(library, placement, incoming, interaction, rng, next_track=..., dtype=float64)`:
+
+1. Transforms incident positions/momenta to local coordinates.
+2. Matches the local entrance state to recorded trials, allowing only fixed floating-point roundoff tolerances.
+   No nearest-bin, energy rescaling or internal step shifting is implemented. Unsupported inputs raise
+   `UnsupportedEntrance` with their row indices **before consuming RNG**.
+3. Uniformly selects one complete trial among identical-state trials. Each trial must have equal sampling weight
+   at that state; importance-weighted or continuous-state interpolation models are future work.
+4. Gathers its particle tree, steps and exits as one bundle; transforms all spatial/momentum fields and adds
+   entrance time. It maps local volume IDs to the receiving instance's IDs.
+5. Preserves the incoming track/parent identity for local particle0. Allocates unique child IDs starting at the
+   caller's `next_track` cursor and returns the advanced cursor. The caller reserves that ID range against all
+   other particles, including ones outside this batch. `interaction` is unique per event in this batch; reuse of
+   a particle on a later visit is distinguished by its new interaction ID.
+
+The result contains `particles`, `steps`, `exits`, selected trial indices and `next_track`. Event/interaction/instance
+fields accompany all rows. A surviving primary keeps its track ID. New tracks keep their actual sampled parents,
+including stopped/interacted ancestors. Null steps/exits are typed empty arrays, not omitted incoming trials.
+Input arrays are copied on library/placement construction; replay does not modify the bank or incoming states.
+
+`dtype` (float64 by default, or float32) is the dtype of the real outputs: positions, momenta, times, lengths, deposits
+and exit energies. The validation, the entrance match and the trial draw run in float64 in both dtypes. The same inputs
+therefore give the same trials, particle tree, track IDs and refusals. float32 differs from float64 only by float32
+rounding of the placement transform and the time shift; lengths, deposits and exit energies are the float32 casts of
+the recorded values. float64 is the reference; the float32 path is the same host code, and there is no device path.
+
+`next_in_vacuum(particles, placements)` is a small **field-free vacuum-only handoff** for outside-to-box entries,
+not a replacement for GDML material or field transport. It returns nearest forward entries and their source indices;
+misses are absent, with no fabricated response. It adds relativistic flight time using supplied total energy/momentum,
+leaves kinematics and identity intact, ignores outward/tangent starts on a face, permits immediate entry into an
+adjacent touching box, and rejects starts strictly inside a component or ambiguous nearest entries. It does not
+track the component interior or infer passive material between placements. Geometry overlap is the caller's concern.
+
+## Tests and next slice
+
+Synthetic tests establish software behavior: rigid covariance of the whole correlated bundle, nontrivial azimuth,
+all particle/event keys, repeated trials and visits, empty outcomes, unsupported-state RNG behavior, proper rotations,
+finite boundaries, volume mapping, and a two-component handoff with outgoing transport and changed placement.
+They do **not** measure statistical agreement with Geant4. Run `python3 -m pytest tests/test_component_response.py`.
+
+Banks as library files (manifest, content hash, `save_library` / `load_library`, refused rows counted by
+`domain_counts`): [libraries](libraries.md) section 8.
+
+## Open work
+
+- A recorder that produces banks from a full Geant4 run of the component: the contract it must meet is in
+  [component training](component-training.md). An experiment's own recorder (one exists for the Mu2e Geant4 framework)
+  can be used today; an experiment-neutral Geant4 recorder (a record-only fast-simulation model on the component's
+  envelope) is planned for this package.
+- A detector adapter that removes double counting and validates one unchanged bank against nominal and altered
+  layouts (moved, rotated, neighbouring components), against full Geant4.
+- Finite-state support is intentionally narrow: replay needs the exact recorded entrance state. A useful continuous
+  entrance-state response requires a separately validated conditional sampler. Existing whole-detector step banks
+  cannot acquire missing boundary information through coordinate conversion alone.
