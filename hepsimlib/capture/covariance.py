@@ -275,3 +275,47 @@ def compare_robust(reference, candidate, spec, *, min_bin_entries=10, min_trials
     return dict(tests=tests, untested=untested, family=family,
                 bonferroni_min_p=min(1.0, worst["p"] * family) if worst else None, worst=worst,
                 mean_edep=means, worst_mean_edep=worst_mean)
+
+
+def compare_clustered(reference, candidate, spec, entries, *, means=("edep",), min_bin_entries=10, min_trials=50):
+    """compare_robust for any per-trial outcome: ``entries(o, spec)`` gives {observable: (values, trial index)} and
+    ``o["trials"]`` holds ``cls``, ``cluster`` (-1: its own cluster), ``edep`` (the trial count) and every name in
+    ``means``. Returns the tests, the Bonferroni minimum, and per mean quantity the per-class ratios (candidate /
+    reference) with cluster-robust errors and the class furthest from 1 in errors (validation/a4)."""
+    from scipy.stats import chi2 as chi2_dist
+    ent_r, ent_c = entries(reference, spec), entries(candidate, spec)
+    cls_r, cls_c = reference["trials"]["cls"], candidate["trials"]["cls"]
+    tests, untested, ratios = [], [], {m: {} for m in means}
+    for k in sorted(set(cls_r) | set(cls_c)):
+        tr_r, tr_c = np.flatnonzero(cls_r == k), np.flatnonzero(cls_c == k)
+        if min(len(tr_r), len(tr_c)) < min_trials:
+            untested.append(dict(cls=k, reference=len(tr_r), candidate=len(tr_c)))
+            continue
+        for name, binning in spec.items():
+            edges = _edges(binning)
+            ra, sa, na = _rates(reference, ent_r[name], tr_r, edges)
+            rb, sb, nb = _rates(candidate, ent_c[name], tr_c, edges)
+            use = (na >= min_bin_entries) & (nb >= min_bin_entries)
+            if not use.any():
+                untested.append(dict(cls=k, observable=name, reason="no bin with enough entries"))
+                continue
+            d = (rb - ra)[use]
+            w, v = np.linalg.eigh((sa + sb)[np.ix_(use, use)])
+            good = w > w.max() * 1e-10
+            t2 = float(np.sum((v[:, good].T @ d) ** 2 / w[good]))
+            dof = int(good.sum())
+            tests.append(dict(observable=name, cls=k, t2=t2, dof=dof, p=float(chi2_dist.sf(t2, dof)),
+                              bins=int(use.sum()), reference=len(tr_r), candidate=len(tr_c)))
+        for m in means:
+            ma, ea = _scalar(reference, reference["trials"][m], tr_r)
+            mb, eb = _scalar(candidate, candidate["trials"][m], tr_c)
+            if ma > 0:
+                ratio = mb / ma
+                ratios[m][k] = dict(ratio=float(ratio), err=float(ratio * np.hypot(ea / ma, eb / mb if mb > 0 else 0.0)),
+                                    reference=len(tr_r), candidate=len(tr_c))
+    worst = min(tests, key=lambda x: x["p"]) if tests else None
+    worst_means = {m: (max(r.values(), key=lambda x: abs(x["ratio"] - 1) / x["err"] if x["err"] > 0 else 0)
+                       if r else None) for m, r in ratios.items()}
+    return dict(tests=tests, untested=untested, family=len(tests),
+                bonferroni_min_p=min(1.0, worst["p"] * len(tests)) if worst else None, worst=worst,
+                means=ratios, worst_means=worst_means)

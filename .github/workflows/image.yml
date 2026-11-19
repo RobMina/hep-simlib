@@ -4,9 +4,9 @@ name: image
 on:
   push:
     branches: [main]
-    paths: ["recorder/**", ".github/workflows/image.yml"]
+    paths: ["recorder/**", "cpp/**", ".github/workflows/image.yml"]
   pull_request:
-    paths: ["recorder/**", ".github/workflows/image.yml"]
+    paths: ["recorder/**", "cpp/**", ".github/workflows/image.yml"]
   workflow_dispatch:
 permissions:
   contents: read

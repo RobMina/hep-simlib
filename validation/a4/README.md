@@ -91,6 +91,11 @@ tests the host (the bank's own placement); TR tests the host and the bank's port
 also depends on A3's. A criterion added or changed after the first read of A4 output is recorded in the notes, and
 the status stays "tested, not closed". The CPU time per event of each arm is reported, with no criterion.
 
+**Amendment before any A4 output exists (2026-11-19).** D3 compares the event rows except the CPU time and the
+model's own per-event lookup counters (`lookups`, `refused`): a refused entrance is counted by the model in HYD and
+there is no model in G4D, so these two bookkeeping columns differ by construction. Every physics column is compared
+bit for bit. `criteria.json` is unchanged.
+
 ## Running
 
 ```bash
