@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A public toy component for hep-simlib: a scintillator-strip module (two layers of four polystyrene bars around an
+     aluminium absorber) in an air-filled box envelope, half sizes 200 x 30 x 110 mm. Not any experiment's design. -->
+<gdml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd">
+  <define/>
+  <materials/>
+  <solids>
+    <box name="module_box" x="400" y="60" z="220" lunit="mm"/>
+    <box name="bar_box" x="380" y="18" z="50" lunit="mm"/>
+    <box name="absorber_box" x="380" y="3" z="200" lunit="mm"/>
+  </solids>
+  <structure>
+    <volume name="bar"><materialref ref="G4_POLYSTYRENE"/><solidref ref="bar_box"/></volume>
+    <volume name="absorber"><materialref ref="G4_Al"/><solidref ref="absorber_box"/></volume>
+    <volume name="module">
+      <materialref ref="G4_AIR"/><solidref ref="module_box"/>
+      <physvol name="bar_L0_0" copynumber="0"><volumeref ref="bar"/><position name="p00" y="-15" z="-75" unit="mm"/></physvol>
+      <physvol name="bar_L0_1" copynumber="1"><volumeref ref="bar"/><position name="p01" y="-15" z="-25" unit="mm"/></physvol>
+      <physvol name="bar_L0_2" copynumber="2"><volumeref ref="bar"/><position name="p02" y="-15" z="25" unit="mm"/></physvol>
+      <physvol name="bar_L0_3" copynumber="3"><volumeref ref="bar"/><position name="p03" y="-15" z="75" unit="mm"/></physvol>
+      <physvol name="absorber" copynumber="0"><volumeref ref="absorber"/><position name="pa" y="0" unit="mm"/></physvol>
+      <physvol name="bar_L1_0" copynumber="4"><volumeref ref="bar"/><position name="p10" y="15" z="-75" unit="mm"/></physvol>
+      <physvol name="bar_L1_1" copynumber="5"><volumeref ref="bar"/><position name="p11" y="15" z="-25" unit="mm"/></physvol>
+      <physvol name="bar_L1_2" copynumber="6"><volumeref ref="bar"/><position name="p12" y="15" z="25" unit="mm"/></physvol>
+      <physvol name="bar_L1_3" copynumber="7"><volumeref ref="bar"/><position name="p13" y="15" z="75" unit="mm"/></physvol>
+    </volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="module"/></setup>
+</gdml>
