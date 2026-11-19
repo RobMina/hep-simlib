@@ -14,6 +14,7 @@ dependencies = ["numpy"]
 [project.optional-dependencies]
 jax = ["jax"]
 capture = ["pandas", "uproot", "awkward"]
+validation = ["scipy"]
 test = ["pytest"]
 
 [tool.setuptools.packages.find]
