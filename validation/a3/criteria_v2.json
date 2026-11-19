@@ -1,0 +1,132 @@
+{
+ "schema": 1,
+ "campaign": "a3-v2-slab-module-covariance",
+ "declared": "before any capture of campaign v2 exists; this file's git commit and sha256 are the declaration",
+ "comparison": "per comparison: the reference set's Geant4 captures against the candidate (the bank of A2 replayed at the reference's entrance states in its placement, in float64 and float32; or, for null_g4, another Geant4 set), in the global frame, per class (incoming species and kinetic energy)",
+ "hit_threshold_MeV": 0.1,
+ "replay_seed": 20261119,
+ "observables": {
+  "edep_log10": [
+   -3,
+   4,
+   35
+  ],
+  "exits": [
+   -0.5,
+   10.5,
+   11
+  ],
+  "hit_volume": [
+   -0.5,
+   9.5,
+   10
+  ],
+  "exit_species": [
+   -0.5,
+   2.5,
+   3
+  ],
+  "exit_kinetic_log10": [
+   -4.125,
+   3.875,
+   32
+  ],
+  "exit_time_log10": [
+   -3,
+   3,
+   24
+  ],
+  "exit_x": [
+   -245,
+   235,
+   48
+  ],
+  "exit_y": [
+   -245,
+   235,
+   48
+  ],
+  "exit_z": [
+   -245,
+   235,
+   48
+  ],
+  "exit_ux": [
+   -1.05,
+   0.95,
+   20
+  ],
+  "exit_uy": [
+   -1.05,
+   0.95,
+   20
+  ],
+  "exit_uz": [
+   -1.05,
+   0.95,
+   20
+  ]
+ },
+ "binning_note": "[lo, hi, n]: n equal bins between lo and hi plus an underflow and an overflow bin. Edges are kept off the values a straight-through particle takes exactly: the module's faces (+-200, +-30, +-110 mm), the direction cosines 0 and +-1, and the incoming kinetic energies (v1 had edges there; see README)",
+ "criteria": [
+  {
+   "name": "shapes",
+   "observable": "every declared observable per class",
+   "metric": "placement_covariance",
+   "quantity": "bonferroni_min_p",
+   "rule": "ge",
+   "tol": 0.001,
+   "note": "cluster-robust Hotelling T^2 p-value, Bonferroni over every tested (class, observable) of the comparison"
+  },
+  {
+   "name": "mean_edep",
+   "observable": "mean total deposit per trial, worst class",
+   "metric": "placement_covariance",
+   "quantity": "ratio",
+   "rule": "within_sigma",
+   "target": 1.0,
+   "tol": 0.0,
+   "k": 3.5,
+   "note": "candidate / reference with the cluster-robust error of the class furthest from 1 in errors"
+  }
+ ],
+ "pass": "every criterion for every comparison and both replay dtypes (null_g4 has no replay: its one result counts for both); null_g4 and B2 are the nulls of the test and of the procedure and must pass like the others",
+ "method": "cluster_robust",
+ "bank": "A2",
+ "comparisons": [
+  {
+   "name": "null_g4",
+   "reference": "B2",
+   "candidate": "C2",
+   "note": "Geant4 vs Geant4 at the nominal placement: the false-failure rate of the test itself, no replay"
+  },
+  {
+   "name": "B2",
+   "reference": "B2",
+   "candidate": "replay"
+  },
+  {
+   "name": "T2",
+   "reference": "T2",
+   "candidate": "replay"
+  },
+  {
+   "name": "R12",
+   "reference": "R12",
+   "candidate": "replay"
+  },
+  {
+   "name": "R22",
+   "reference": "R22",
+   "candidate": "replay"
+  },
+  {
+   "name": "TR2",
+   "reference": "TR2",
+   "candidate": "replay"
+  }
+ ],
+ "min_trials": 50,
+ "min_bin_entries": 10,
+ "statistic": "per (class, observable): Hotelling T^2 of the difference of per-trial rate vectors over the bins with at least min_bin_entries entries on both sides, with cluster-robust covariances (a Geant4 trial is one cluster; replayed trials that drew the same bank trial are one cluster), p from chi2 with k = rank of the summed covariance; mean deposit ratio per class with cluster-robust errors"
+}
