@@ -10,6 +10,7 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
     recorder/CMakeLists.txt /opt/hepsimlib-recorder/CMakeLists.txt
     recorder/src /opt/hepsimlib-recorder/src
     recorder/examples /opt/hepsimlib-recorder/examples
+    cpp /opt/cpp
 
 %post
     set -eu
@@ -31,7 +32,7 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
     cmake --install /tmp/build
     rm -rf /tmp/build
     geant4-config --version > /opt/hepsimlib-recorder/GEANT4_VERSION
-    sha256sum /opt/hepsimlib-recorder/CMakeLists.txt /opt/hepsimlib-recorder/src/* > /opt/hepsimlib-recorder/SOURCE.sha256
+    sha256sum /opt/hepsimlib-recorder/CMakeLists.txt /opt/hepsimlib-recorder/src/* $(find /opt/cpp -type f | sort) > /opt/hepsimlib-recorder/SOURCE.sha256
 
 %environment
     export MAMBA_ROOT_PREFIX=/opt/conda
@@ -42,7 +43,7 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
     set -eu
     . /opt/conda/geant4-env.sh
     export PATH=/opt/conda/bin:$PATH
-    test -x /opt/conda/bin/hepsimlib-recorder
+    for b in hepsimlib-recorder hepsimlib-hybrid hepsimlib-bank hepsimlib-replay; do test -x /opt/conda/bin/$b; done
     test "$(cat /opt/hepsimlib-recorder/GEANT4_VERSION)" = "11.3.2"
     for v in $(sed -n 's/^export \(G4[A-Z0-9_]*DATA\)=.*/\1/p' /opt/conda/geant4-env.sh); do
         eval "d=\$$v"; test -d "$d" || { echo "missing Geant4 data $v=$d"; exit 1; }

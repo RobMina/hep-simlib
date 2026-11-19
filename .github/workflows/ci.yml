@@ -76,3 +76,16 @@ jobs:
           cd pilot
           for m in A2_000.mac B2_000.mac C2_000.mac R22_000.mac; do ../build/hepsimlib-recorder FTFP_BERT "$m" > "${m%.mac}.log" 2>&1 || { tail -30 "${m%.mac}.log"; exit 1; }; done
           python ../validation/a3/analyze.py . --criteria ../validation/a3/criteria_v2.json --output record.json
+      - name: C++ bank host against the Python one
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          HEPSIMLIB_CPP_BIN: ${{ github.workspace }}/build
+        run: python -m pytest -q tests/test_cpp_bank.py
+      - name: A4 pilot (2 events per state, every arm) through the whole analysis
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python validation/a4/campaign.py macros a4pilot --bank pilot/bank_A2.npz --per-state 2 --shards 1
+          cd a4pilot
+          for m in *.mac; do ../build/hepsimlib-hybrid FTFP_BERT "$m" > "${m%.mac}.log" 2>&1 || { tail -30 "${m%.mac}.log"; exit 1; }; done
+          python ../validation/a4/analyze.py . --output record.json --bank-tool ../build/hepsimlib-bank

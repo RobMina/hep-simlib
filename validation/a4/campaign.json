@@ -1,0 +1,30 @@
+{
+ "schema": 1,
+ "name": "a4-geant4-host-slab-module",
+ "description": "A4: the component bank inside Geant4 (hepsimlib::BankModel) against full Geant4 on the public toy slab module with two downstream CsI blocks (README.md).",
+ "states_from": "../a3/campaign_v2.json",
+ "component": {"gdml": "../a3/slab_module.gdml", "envelope": "module", "geometryTag": "slab-module-v1"},
+ "physics": {"list": "FTFP_BERT", "tag": "FTFP_BERT-default-cuts"},
+ "approach_mm": 0.001,
+ "catchers": [
+  {"name": "floor", "material": "G4_CESIUM_IODIDE", "half_mm": [250, 50, 200], "centre_mm": [0, -100, 0]},
+  {"name": "wall", "material": "G4_CESIUM_IODIDE", "half_mm": [50, 45, 200], "centre_mm": [-270, 0, 0]}
+ ],
+ "refused_states": [
+  {"pdg": 13, "kinetic": 999, "position": [0, 30, 0], "direction": [0, -1, 0]},
+  {"pdg": 11, "kinetic": 20, "position": [10, 30, 0], "direction": [0, -1, 0]},
+  {"pdg": 22, "kinetic": 5, "position": [0, 30, 0], "direction": [0, -0.984807753012208, 0.17364817766693033]}
+ ],
+ "bank": {"campaign": "../a3/campaign_v2.json", "set": "A2", "file": "bank_A2.npz"},
+ "placements_from": "../a3/campaign_v2.json",
+ "arms": {
+  "G4N1": {"module": "geant4", "placement": "nominal", "run": 21, "seed": 510000, "per_state": 400, "shards": 10},
+  "G4N2": {"module": "geant4", "placement": "nominal", "run": 22, "seed": 520000, "per_state": 400, "shards": 10},
+  "HYN": {"module": "bank", "placement": "nominal", "run": 23, "seed": 530000, "per_state": 400, "shards": 10, "detail": 10},
+  "G4T": {"module": "geant4", "placement": "TR", "run": 24, "seed": 540000, "per_state": 400, "shards": 10},
+  "HYT": {"module": "bank", "placement": "TR", "run": 25, "seed": 550000, "per_state": 400, "shards": 10, "detail": 10},
+  "G4D": {"module": "geant4", "placement": "nominal", "run": 26, "seed": 560000, "per_state": 5, "per_refused": 50, "shards": 1},
+  "HYD": {"module": "bank", "placement": "nominal", "run": 26, "seed": 560000, "per_state": 5, "per_refused": 50, "shards": 1},
+  "PUD": {"module": "geant4", "plumbing": false, "placement": "nominal", "run": 26, "seed": 560000, "per_state": 5, "per_refused": 50, "shards": 1}
+ }
+}
