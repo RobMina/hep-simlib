@@ -64,7 +64,26 @@ python validation/a3/analyze.py RUN_DIR --output record.json
 `campaign.py macros RUN_DIR --trials 3 --shards 1 --sets A,B,R2` is the pilot the CI runs on every push (the chain end
 to end on real Geant4 output; too small to test the criteria). Batch sizes come from a measured pilot shard.
 
-## Result of v1 and the v2 campaign
+## Result
+
+**v2 (criteria_v2.json, run 2026-11-19): statistically equivalent, in float64 and float32.** Every comparison passes
+both criteria; float32 and float64 give the same tests to the fourth digit. 108 tests per comparison (9 classes x
+12 observables), 2,200 trials per class on each side:
+
+| Comparison | Bonferroni min p | Worst test | Worst mean deposit (ratio, error, pull) |
+|---|---|---|---|
+| null_g4 (Geant4 vs Geant4) | 1.0 | gamma 50 MeV, deposit | 0.964 +- 0.037 (-1.0) |
+| B2 (nominal) | 0.94 | n 50 MeV, deposit | 0.981 +- 0.012 (-1.7) |
+| T2 (translated) | 0.13 | e+ 50 MeV, exit u_z | 0.921 +- 0.074 (-1.1) |
+| R12 (90 deg about z) | 0.26 | pi- 300 MeV, exit u_z | 0.980 +- 0.023 (-0.9) |
+| R22 (1 rad about (1,2,3)) | 0.30 | n 50 MeV, exit y | 0.979 +- 0.023 (-0.9) |
+| TR2 (translated and rotated) | 0.85 | pi- 300 MeV, exit x | 0.875 +- 0.077 (-1.6) |
+
+The bank of A2 (content hash `d2e8b190...`) recorded at the nominal placement reproduces full Geant4 in four held-out
+placements within the statistics of this campaign, and the test itself does not fail on Geant4 against Geant4.
+Scope as in Design: one toy component, exact entrance states, no field, no neighbouring components.
+
+## History: v1 and the v2 campaign
 
 **v1 (criteria.json, run 2026-11-19): tested, not closed.** Mean deposits agreed in every set (worst class within
 1.8 errors), but the shape criterion failed for B in float32, T, R1 and TR, and passed only for R2 and for B in
