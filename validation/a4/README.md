@@ -96,6 +96,32 @@ model's own per-event lookup counters (`lookups`, `refused`): a refused entrance
 there is no model in G4D, so these two bookkeeping columns differ by construction. Every physics column is compared
 bit for bit. `criteria.json` is unchanged.
 
+## Result (run 2026-11-19, code `706f3db`, criteria sha256 `d8f1a95f...`)
+
+**Passed: every exact check and every statistical criterion.** Bank: A3 v2's `bank_A2.npz` (99,000 trials, content
+hash `d2e8b190...`). 199,935 events in 53 shards.
+
+| Check | Result |
+|---|---|
+| D1 reader | C++ and Python content hashes equal; every hybrid run recorded the same hash |
+| D2 parity | 990 detailed events per arm: match counts and trials identical; deposits and exits differ by 0 (nominal) and at most 9.1e-13 (TR) |
+| D3 refusal | 495 bank-state events each trigger once; 150 refused-state events never trigger and equal Geant4's rows bit for bit |
+| D4 inert plumbing | all 645 rows with the fast-simulation process equal those without it bit for bit |
+| D5 coverage | every one of 39,600 events per arm triggers once (HYN, HYT); 28 and 25 re-entrant exits; 24,255 and 24,586 refused lookups (particles entering the module in states the bank does not hold, transported by Geant4) |
+
+| Comparison | Bonferroni min p (99 tests) | Worst test | Worst mean ratio (pull): module, floor, wall |
+|---|---|---|---|
+| null_g4 | 0.51 | e+ 50 MeV, floor first-deposit time | 1.035 (+1.3), 0.968 (-2.0), 1.158 (+1.5) |
+| nominal | 0.63 | mu- 1 GeV, floor first-deposit time | 1.010 (+1.2), 0.976 (-1.4), 0.709 (-2.6) |
+| TR | 0.33 | e+ 50 MeV, floor deposit | 0.972 (-1.0), 1.022 (+1.3), 0.886 (-1.7) |
+
+The wall block sees only the end-face entrances' forward exits, so its mean has the largest errors.
+
+**Cost.** CPU per event is the same in both arms (0.137 ms in Geant4 arms, 0.136-0.137 ms with the bank): the toy
+module is thin, so Geant4 transports it as fast as the model replays it; the gain of a bank is expected where a
+component's showers dominate the cost, which this campaign does not test. Loading the 99,000-trial bank takes about
+4 s and 0.5 GB per process. The job: 2 min on 4 cores, MaxRSS 3.5 GB; analysis 43 s, 1.0 GB.
+
 ## Running
 
 ```bash
