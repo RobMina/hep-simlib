@@ -17,17 +17,30 @@ SPEC = {"edep_log10": [-3, 4, 35], "exits": [-0.5, 10.5, 11], "hit_volume": [-0.
         "exit_x": [-240, 240, 48], "exit_ux": [-1, 1, 20]}
 
 
-def _bank(tmp_path, tables):
+def _only(group, run):
+    """The rows of one event (run number after shrink) in every table of a group."""
+    return {name: {f: np.asarray(v)[np.asarray(table["run"]) == run] for f, v in table.items()}
+            for name, table in group.items()}
+
+
+def _bank(tmp_path, tables, *, single=False):
+    """The fixture's bank. Its two primaries share one local entrance state, so the replay draws between their two
+    trials; ``single`` keeps only event 2 (rotated and translated placement, a stopping child and an exit at birth),
+    whose one trial the replay must reproduce exactly."""
     tables, links = bankable(tables)
     shrink(tables, links)
+    events = 2
+    if single:
+        tables, links, events = _only(tables, 2), _only(links, 2), 1
     path = write(tmp_path / "capture.root", tables, links)
-    bank.convert([path], tmp_path / "bank.npz", 2, relative_to=tmp_path)
+    bank.convert([path], tmp_path / "bank.npz", events, relative_to=tmp_path)
     return tables, cr.load_library(tmp_path / "bank.npz")
 
 
 @pytest.mark.parametrize("dtype", [np.float64, np.float32])
 def test_replay_in_the_capture_placement_reproduces_its_outcomes(tmp_path, tables, dtype):
-    tables, library = _bank(tmp_path, tables)
+    tables, library = _bank(tmp_path, tables, single=True)
+    assert library.exit_offsets.tolist() == [0, 1] and len(library.steps["edep"]) == 2   # the approach step is outside
     g4 = covariance.from_capture(tables, threshold=0.1)
     rp = covariance.from_replay(library, tables, np.random.default_rng(1), dtype=dtype, threshold=0.1)
     tol = 1e-9 if dtype == np.float64 else 1e-4
