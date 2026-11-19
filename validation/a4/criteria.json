@@ -1,0 +1,41 @@
+{
+ "schema": 1,
+ "campaign": "a4-geant4-host-slab-module",
+ "declared": "before any A4 output exists; this file's git commit and sha256 are the declaration",
+ "zero": 1e-12,
+ "binning_note": "[lo, hi, n]: n equal bins between lo and hi plus an underflow and an overflow bin; a deposit or time at or below 'zero' enters the underflow bin as log10(zero). Edges are kept off the module's and the blocks' faces and off the incoming kinetic energies. Centroids and first-deposit times enter only for events with a deposit in that block.",
+ "observables": {
+  "module_edep_log10": [-3, 4, 35],
+  "floor_edep_log10": [-3, 4, 35],
+  "wall_edep_log10": [-3, 4, 35],
+  "floor_enter": [-0.5, 10.5, 11],
+  "wall_enter": [-0.5, 10.5, 11],
+  "floor_x": [-252.5, 247.5, 50],
+  "floor_z": [-202.5, 197.5, 40],
+  "wall_y": [-47.5, 42.5, 18],
+  "wall_z": [-202.5, 197.5, 40],
+  "floor_time_log10": [-3, 3, 24],
+  "wall_time_log10": [-3, 3, 24]
+ },
+ "means": ["module_edep", "floor_edep", "wall_edep"],
+ "min_trials": 50,
+ "min_bin_entries": 10,
+ "statistic": "per (class, observable): Hotelling T^2 of the difference of per-event rate vectors over the bins with at least min_bin_entries entries on both sides, with cluster-robust covariances (a Geant4 event is one cluster; bank events that drew the same trial are one cluster), p from chi2 with k = rank of the summed covariance (hepsimlib.capture.covariance, as A3 v2); mean ratios per class with cluster-robust errors",
+ "comparisons": [
+  {"name": "null_g4", "reference": "G4N1", "candidate": "G4N2", "note": "Geant4 vs Geant4: the false-failure rate of the test"},
+  {"name": "nominal", "reference": "G4N1", "candidate": "HYN", "note": "the host at the bank's own placement"},
+  {"name": "TR", "reference": "G4T", "candidate": "HYT", "note": "the host and the bank's portability (translated and rotated)"}
+ ],
+ "criteria": [
+  {"name": "shapes", "quantity": "bonferroni_min_p", "rule": "ge", "tol": 0.001, "applies": "every comparison"},
+  {"name": "means", "quantity": "ratio", "rule": "within_sigma", "target": 1.0, "k": 3.5, "applies": "every comparison, each quantity in 'means', the class furthest from 1 in errors"}
+ ],
+ "exact": [
+  {"name": "D1_reader", "rule": "the C++ loader accepts the bank and its recomputed content hash equals the manifest's"},
+  {"name": "D2_parity", "arms": ["HYN", "HYT"], "atol": 1e-9, "rule": "every detailed event: same match count and trial as the Python host given the logged entrance state, placement and uniform; same deposit rows and exits, integers exactly and reals within atol (mm, MeV/c, MeV, ns)"},
+  {"name": "D3_refusal", "arms": ["HYD", "G4D"], "rule": "every bank-state event of HYD triggers once, no refused-state event triggers, and every refused-state row of HYD equals G4D's bit for bit except the CPU time"},
+  {"name": "D4_inert_plumbing", "arms": ["G4D", "PUD"], "rule": "every row of G4D equals PUD's bit for bit except the CPU time"},
+  {"name": "D5_coverage", "arms": ["HYN", "HYT"], "rule": "every event triggers once for its incoming particle"}
+ ],
+ "pass": "every exact check, and every statistical criterion for every comparison; null_g4 must pass like the others"
+}
