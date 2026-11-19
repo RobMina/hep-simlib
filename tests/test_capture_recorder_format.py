@@ -116,3 +116,28 @@ def test_cli(tmp_path, tables, capsys):
     assert main(["audit", str(path), "--expected-events", "2", "--output", str(tmp_path / "a.json")]) == 0
     assert json.loads((tmp_path / "a.json").read_text())["exits_at_birth"] == 1
     assert main(["nonsense"]) == 2
+
+
+def test_a_foreign_reader_and_its_checks_feed_the_converter(tmp_path, tables):
+    """Another recorder's files: its own reader (here: tables in memory, without runinfo) and its framework checks."""
+    tables, links = bankable(tables)
+    with_manifest(links, MANIFEST)
+    seen = []
+
+    def reader(path):
+        seen.append(path)
+        return tables, links, None
+
+    def framework(t, l):
+        seen.append("checked")
+
+    paths = [tmp_path / "a.capture", tmp_path / "b.capture"]
+    for p in paths:
+        p.write_bytes(b"framework-specific bytes")
+    manifest = bank.convert(paths, tmp_path / "bank.npz", 2, relative_to=tmp_path, reader=reader,
+                            record_generator=False, audit_options={"checks": [framework]})
+    assert seen == [paths[0], "checked", paths[1], "checked"]
+    assert "generator" in manifest["unrecorded"] and "seeds" in manifest["unrecorded"]
+    assert [x["dataset"] for x in manifest["source"]["samples"]] == ["a.capture", "b.capture"]
+    library, recorded = bank.library_from_captures(paths[:1], 2, relative_to=tmp_path, reader=reader)
+    assert recorded["generator"]["physics_list"] == "FTFP_BERT" and "manifest" not in recorded["source"]["samples"][0]
