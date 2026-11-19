@@ -1,4 +1,5 @@
-# Geant4 11.3.2 (conda-forge, with its data packages) plus hepsimlib-recorder and the Python readers.
+# Geant4 11.3.2 (conda-forge, with its data packages) plus hepsimlib-recorder, the Python readers and scipy (the
+# validation analyses), so a campaign records and analyses in one image.
 #   apptainer build hepsimlib-g4.sif recorder/container/hepsimlib-g4.def      (run from the repository root)
 # One Geant4 thread per process; no GPU. The hepsimlib Python package itself comes from the checkout (PYTHONPATH),
 # so the image changes only when Geant4 or the recorder changes.
@@ -14,7 +15,7 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
     set -eu
     export MAMBA_ROOT_PREFIX=/opt/conda
     micromamba install -y -n base -c conda-forge --strict-channel-priority \
-        geant4=11.3.2 cmake=3.31 make cxx-compiler python=3.12 numpy pandas awkward uproot pytest
+        geant4=11.3.2 cmake=3.31 make cxx-compiler python=3.12 numpy pandas awkward uproot scipy pytest
     micromamba clean -a -y
     # conda's activation scripts set the Geant4 data variables from CONDA_PREFIX and read variables that may be unset:
     # run them once here (nounset off) and keep only the resulting G4*DATA paths, as plain exports, for %environment
@@ -46,7 +47,7 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
     for v in $(sed -n 's/^export \(G4[A-Z0-9_]*DATA\)=.*/\1/p' /opt/conda/geant4-env.sh); do
         eval "d=\$$v"; test -d "$d" || { echo "missing Geant4 data $v=$d"; exit 1; }
     done
-    python3 -c "import numpy, pandas, awkward, uproot"
+    python3 -c "import numpy, pandas, awkward, uproot, scipy"
     # the toy module, 15 events, through the recorder: Geant4, its data and the output all work in this image
     work=$(mktemp -d)
     cp /opt/hepsimlib-recorder/examples/* "$work"/
