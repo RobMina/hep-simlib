@@ -1,0 +1,309 @@
+{
+ "schema": 1,
+ "name": "a3-v2-slab-module-covariance",
+ "description": "A3 v2: placement covariance of a component bank against full Geant4 on the public toy slab module, with a 1,000-trial bank, a Geant4-vs-Geant4 null and fresh seeds (README.md).",
+ "component": {
+  "gdml": "slab_module.gdml",
+  "envelope": "module",
+  "geometryTag": "slab-module-v1"
+ },
+ "physics": {
+  "list": "FTFP_BERT",
+  "tag": "FTFP_BERT-default-cuts"
+ },
+ "approach_mm": 0.001,
+ "particles": [
+  [
+   13,
+   1000
+  ],
+  [
+   -13,
+   200
+  ],
+  [
+   11,
+   20
+  ],
+  [
+   -11,
+   50
+  ],
+  [
+   22,
+   5
+  ],
+  [
+   22,
+   50
+  ],
+  [
+   2212,
+   500
+  ],
+  [
+   -211,
+   300
+  ],
+  [
+   2112,
+   50
+  ]
+ ],
+ "entrances": [
+  {
+   "name": "top-centre-normal",
+   "position": [
+    0,
+    30,
+    0
+   ],
+   "direction": [
+    0,
+    -1,
+    0
+   ]
+  },
+  {
+   "name": "top-centre-tilt30yz",
+   "position": [
+    0,
+    30,
+    0
+   ],
+   "direction": [
+    0,
+    -0.8660254037844386,
+    0.5
+   ]
+  },
+  {
+   "name": "top-centre-tilt45xy",
+   "position": [
+    0,
+    30,
+    0
+   ],
+   "direction": [
+    0.7071067811865476,
+    -0.7071067811865476,
+    0
+   ]
+  },
+  {
+   "name": "top-off-normal",
+   "position": [
+    120,
+    30,
+    55
+   ],
+   "direction": [
+    0,
+    -1,
+    0
+   ]
+  },
+  {
+   "name": "top-off-tilt30yz",
+   "position": [
+    120,
+    30,
+    55
+   ],
+   "direction": [
+    0,
+    -0.8660254037844386,
+    0.5
+   ]
+  },
+  {
+   "name": "top-off-tilt45xy",
+   "position": [
+    120,
+    30,
+    55
+   ],
+   "direction": [
+    0.7071067811865476,
+    -0.7071067811865476,
+    0
+   ]
+  },
+  {
+   "name": "top-corner-normal",
+   "position": [
+    -160,
+    30,
+    -85
+   ],
+   "direction": [
+    0,
+    -1,
+    0
+   ]
+  },
+  {
+   "name": "top-corner-tilt30yz",
+   "position": [
+    -160,
+    30,
+    -85
+   ],
+   "direction": [
+    0,
+    -0.8660254037844386,
+    0.5
+   ]
+  },
+  {
+   "name": "top-corner-tilt45xy",
+   "position": [
+    -160,
+    30,
+    -85
+   ],
+   "direction": [
+    0.7071067811865476,
+    -0.7071067811865476,
+    0
+   ]
+  },
+  {
+   "name": "end-centre-normal",
+   "position": [
+    200,
+    0,
+    0
+   ],
+   "direction": [
+    -1,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "end-off-normal",
+   "position": [
+    200,
+    -12,
+    60
+   ],
+   "direction": [
+    -1,
+    0,
+    0
+   ]
+  }
+ ],
+ "trials_per_state": 200,
+ "shards_per_set": 10,
+ "sets": {
+  "A2": {
+   "role": "bank",
+   "placement": "nominal",
+   "run": 11,
+   "seed": 410000,
+   "trials_per_state": 1000,
+   "shards": 50
+  },
+  "B2": {
+   "role": "null (replay at the bank's placement)",
+   "placement": "nominal",
+   "run": 12,
+   "seed": 420000
+  },
+  "C2": {
+   "role": "null (Geant4 vs Geant4 with B2)",
+   "placement": "nominal",
+   "run": 13,
+   "seed": 430000
+  },
+  "T2": {
+   "role": "held-out",
+   "placement": "T",
+   "run": 14,
+   "seed": 440000
+  },
+  "R12": {
+   "role": "held-out",
+   "placement": "R1",
+   "run": 15,
+   "seed": 450000
+  },
+  "R22": {
+   "role": "held-out",
+   "placement": "R2",
+   "run": 16,
+   "seed": 460000
+  },
+  "TR2": {
+   "role": "held-out",
+   "placement": "TR",
+   "run": 17,
+   "seed": 470000
+  }
+ },
+ "placements": {
+  "nominal": {
+   "translation_mm": [
+    0,
+    0,
+    0
+   ],
+   "rotation": "identity"
+  },
+  "T": {
+   "translation_mm": [
+    1234.5,
+    -567.25,
+    89.125
+   ],
+   "rotation": "identity"
+  },
+  "R1": {
+   "translation_mm": [
+    0,
+    0,
+    0
+   ],
+   "rotation": {
+    "axis": [
+     0,
+     0,
+     1
+    ],
+    "angle_deg": 90
+   }
+  },
+  "R2": {
+   "translation_mm": [
+    0,
+    0,
+    0
+   ],
+   "rotation": {
+    "axis": [
+     1,
+     2,
+     3
+    ],
+    "angle_deg": 57.29577951308232
+   }
+  },
+  "TR": {
+   "translation_mm": [
+    -310.0,
+    2048.0,
+    -777.5
+   ],
+   "rotation": {
+    "axis": [
+     1,
+     2,
+     3
+    ],
+    "angle_deg": 57.29577951308232
+   }
+  }
+ }
+}

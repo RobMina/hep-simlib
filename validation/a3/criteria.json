@@ -1,0 +1,30 @@
+{
+ "schema": 1,
+ "campaign": "a3-slab-module-covariance",
+ "declared": "before any capture of the campaign exists; this file's git commit and sha256 are the declaration",
+ "comparison": "for each set S in {B, T, R1, R2, TR}: Geant4 captures of S (reference) against the bank of set A replayed at the entrance states of S's primaries in S's placement (candidate), in the global frame, per class (incoming species and kinetic energy); replay in float64 and in float32",
+ "hit_threshold_MeV": 0.1,
+ "min_entries": 50,
+ "replay_seed": 20261118,
+ "observables": {
+  "edep_log10": [-3, 4, 35],
+  "exits": [-0.5, 10.5, 11],
+  "hit_volume": [-0.5, 9.5, 10],
+  "exit_species": [-0.5, 2.5, 3],
+  "exit_kinetic_log10": [-4, 4, 32],
+  "exit_time_log10": [-3, 3, 24],
+  "exit_x": [-240, 240, 48], "exit_y": [-240, 240, 48], "exit_z": [-240, 240, 48],
+  "exit_ux": [-1, 1, 20], "exit_uy": [-1, 1, 20], "exit_uz": [-1, 1, 20]
+ },
+ "binning_note": "[lo, hi, n]: n equal bins between lo and hi plus an underflow and an overflow bin; log10 of a deposit, energy or time at or below 1e-12 enters the underflow",
+ "criteria": [
+  {"name": "shapes", "observable": "every declared observable per class", "metric": "placement_covariance",
+   "quantity": "bonferroni_min_p", "rule": "ge", "tol": 0.001,
+   "note": "two-sample chi2 (ROOT UU) p-value, Bonferroni over every tested (class, observable) of the set"},
+  {"name": "mean_edep", "observable": "mean total deposit per trial, worst class", "metric": "placement_covariance",
+   "quantity": "ratio", "rule": "within_sigma", "target": 1.0, "tol": 0.0, "k": 3.5,
+   "note": "candidate / reference with the independent-sample error of the class furthest from 1 in errors"}
+ ],
+ "sets": ["B", "T", "R1", "R2", "TR"],
+ "pass": "every criterion for every set and both replay dtypes; B (nominal) is the null of the procedure itself and must pass like the others"
+}

@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install
-        run: python -m pip install -e '.[test,capture]'
+        run: python -m pip install -e '.[test,capture,validation]'
       - name: Install JAX (the *_jax twins; skipped where no wheel exists)
         run: python -m pip install jax || echo "no JAX wheel for this Python; the JAX twin tests are skipped"
       - name: Test
@@ -49,7 +49,7 @@ jobs:
         with:
           environment-name: g4
           create-args: >-
-            geant4=11.3.2 cmake=3.31 make cxx-compiler python=3.12 numpy pandas awkward uproot pytest
+            geant4=11.3.2 cmake=3.31 make cxx-compiler python=3.12 numpy pandas awkward uproot pytest scipy
           cache-environment: true
       - name: Build the recorder
         run: |
@@ -68,3 +68,11 @@ jobs:
             | python -c "import json,sys; r=json.load(sys.stdin); print({k: r[k] for k in ('energy_accounting_passed', 'conserving_steps_out_of_tolerance', 'decay_steps_out_of_tolerance', 'event_closure_out_of_tolerance', 'nuclear_processes', 'max_abs_event_closure_MeV')})"
           python -m hepsimlib.capture bank slab_module_smoke.root --expected-events 15 --output bank.npz
           python -m hepsimlib.library check bank.npz
+      - name: A3 v2 pilot (3 trials per state; sets A2, B2, C2, R22) through the whole analysis
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python validation/a3/campaign.py macros pilot --campaign validation/a3/campaign_v2.json --trials 3 --shards 1 --sets A2,B2,C2,R22
+          cd pilot
+          for m in A2_000.mac B2_000.mac C2_000.mac R22_000.mac; do ../build/hepsimlib-recorder FTFP_BERT "$m" > "${m%.mac}.log" 2>&1 || { tail -30 "${m%.mac}.log"; exit 1; }; done
+          python ../validation/a3/analyze.py . --criteria ../validation/a3/criteria_v2.json --output record.json

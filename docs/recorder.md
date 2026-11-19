@@ -21,7 +21,8 @@ GDML component  ->  hepsimlib-recorder (Geant4, one thread)  ->  capture file (R
   the usual `/run/setCut` commands.
 - **Primaries**: exact local entrance states, each a species, a point on an envelope face, an inward direction and a
   kinetic energy, repeated a given number of times. The primary starts `approach` mm (default 1) behind the face in
-  vacuum, so its first step is a trivial approach step and its entrance is a Geant4 boundary crossing.
+  vacuum, so its first step is a trivial approach step and its entrance is a Geant4 boundary crossing. For unstable
+  primaries keep it short (e.g. 1 um): a decay in the approach is recorded as an error (the primary never entered).
 - **Recording**: every step of every particle inside the envelope (zero-deposit steps included), the primary's
   approach steps, every track's begin, end and entrance states, every stacking classification, the creator step of
   every secondary, and the volume inventory. A track is stopped right after its first exit (the step that leaves the
