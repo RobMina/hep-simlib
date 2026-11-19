@@ -8,6 +8,7 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
 %files
     recorder/CMakeLists.txt /opt/hepsimlib-recorder/CMakeLists.txt
     recorder/src /opt/hepsimlib-recorder/src
+    recorder/examples /opt/hepsimlib-recorder/examples
 
 %post
     set -eu
@@ -15,9 +16,13 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
     micromamba install -y -n base -c conda-forge --strict-channel-priority \
         geant4=11.3.2 cmake=3.31 make cxx-compiler python=3.12 numpy pandas awkward uproot pytest
     micromamba clean -a -y
-    # conda activation scripts set the Geant4 data variables; keep them for %environment
-    cat /opt/conda/etc/conda/activate.d/*.sh > /opt/conda/geant4-env.sh
-    . /opt/conda/geant4-env.sh
+    # conda's activation scripts set the Geant4 data variables from CONDA_PREFIX and read variables that may be unset:
+    # run them once here (nounset off) and keep only the resulting G4*DATA paths, as plain exports, for %environment
+    # (in bash: some activation scripts use bash syntax, and %post runs in sh)
+    bash -c 'export CONDA_PREFIX=/opt/conda; for f in /opt/conda/etc/conda/activate.d/*.sh; do . "$f"; done; env' \
+        | grep -E '^G4[A-Z0-9_]*DATA=' | sort | sed 's/^/export /' > /opt/conda/geant4-env.sh
+    test "$(wc -l < /opt/conda/geant4-env.sh)" -ge 10
+    cat /opt/conda/geant4-env.sh
     export PATH=/opt/conda/bin:$PATH
     cmake -S /opt/hepsimlib-recorder -B /tmp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/conda \
           -DCMAKE_PREFIX_PATH=/opt/conda
@@ -33,10 +38,21 @@ From: mambaorg/micromamba:2.10.0-ubuntu24.04
     . /opt/conda/geant4-env.sh
 
 %test
+    set -eu
     . /opt/conda/geant4-env.sh
+    export PATH=/opt/conda/bin:$PATH
     test -x /opt/conda/bin/hepsimlib-recorder
     test "$(cat /opt/hepsimlib-recorder/GEANT4_VERSION)" = "11.3.2"
+    for v in $(sed -n 's/^export \(G4[A-Z0-9_]*DATA\)=.*/\1/p' /opt/conda/geant4-env.sh); do
+        eval "d=\$$v"; test -d "$d" || { echo "missing Geant4 data $v=$d"; exit 1; }
+    done
     python3 -c "import numpy, pandas, awkward, uproot"
+    # the toy module, 15 events, through the recorder: Geant4, its data and the output all work in this image
+    work=$(mktemp -d)
+    cp /opt/hepsimlib-recorder/examples/* "$work"/
+    cd "$work" && hepsimlib-recorder FTFP_BERT slab_module.mac > recorder.log 2>&1 || { tail -40 recorder.log; exit 1; }
+    test -s slab_module_smoke.root
+    rm -rf "$work"
 
 %labels
     org.opencontainers.image.title hepsimlib-g4
