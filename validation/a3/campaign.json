@@ -4,7 +4,7 @@
  "description": "Placement covariance of a component bank against full Geant4 on the public toy slab module (README.md).",
  "component": {"gdml": "slab_module.gdml", "envelope": "module", "geometryTag": "slab-module-v1"},
  "physics": {"list": "FTFP_BERT", "tag": "FTFP_BERT-default-cuts"},
- "approach_mm": 1.0,
+ "approach_mm": 0.001,
  "particles": [[13, 1000], [-13, 200], [11, 20], [-11, 50], [22, 5], [22, 50], [2212, 500], [-211, 300], [2112, 50]],
  "entrances": [
   {"name": "top-centre-normal", "position": [0, 30, 0], "direction": [0, -1, 0]},

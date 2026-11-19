@@ -19,7 +19,15 @@ physics list, the seeds and the analysis.
 Every set records the same exact local entrance grid (`campaign.json`): 9 species and energies (mu- 1 GeV, mu+ 200 MeV,
 e- 20 MeV, e+ 50 MeV, gamma 5 and 50 MeV, p 500 MeV, pi- 300 MeV, n 50 MeV) x 11 entrance points and directions on
 two faces = 99 states, 200 trials each (19,800 events per set, 10 shards of 20 trials per state), each set with its
-own seeds. FTFP_BERT, default cuts, Geant4 11.3.2, one thread per shard.
+own seeds. FTFP_BERT, default cuts, Geant4 11.3.2, one thread per shard. Primaries start 1 um behind the face
+(`approach_mm`), so an unstable primary practically never decays in the vacuum approach.
+
+**Amendment before the held-out read (2026-11-19).** The first run used a 1 mm approach. One of its 118,800 events
+(set TR, shard 1, event 1637: a 300 MeV pi-) decayed in flight in that millimetre of vacuum, so its primary never
+entered and the recorder flagged the event; the run stopped at recording and the analysis never read any held-out
+set. A 300 MeV pi- decays within 1 mm with probability about 4.4e-5 (beta gamma c tau = 23 m), about 0.6 expected
+among the campaign's 13,200 pi- events. The approach is now 1 um (about 6e-4 expected in the campaign). The criteria
+are unchanged.
 
 For each set S other than A, the bank of A is replayed at the entrance states of S's primaries, in S's placement,
 and compared with S's Geant4 captures in the global frame (`hepsimlib.capture.covariance`): per class (incoming
