@@ -5,7 +5,8 @@
 writes OUTDIR/<set>_<shard>.mac, copies the GDML next to them, and OUTDIR/shards.json:
 [{set, shard, run, subrun, seed, events, macro, output}]. Run each shard from OUTDIR with
 ``hepsimlib-recorder <physics list> <macro>`` (one Geant4 thread per process). --trials and --shards override the
-specification for pilots; the full campaign is campaign.json as committed. Standard library and NumPy only.
+specification for pilots; the full campaign is the campaign file as committed (a set may give its own
+trials_per_state and shards). Standard library and NumPy only.
 """
 import argparse
 import json
@@ -72,13 +73,15 @@ def macro(campaign, name, shard, trials):
 def write_macros(out, campaign, *, trials=None, shards=None, sets=None):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    shards = int(shards or campaign["shards_per_set"])
-    per_shard = trials if trials is not None else campaign["trials_per_state"] // shards
-    if trials is None and per_shard * shards != campaign["trials_per_state"]:
-        raise ValueError("trials_per_state must divide into shards_per_set")
     rows = []
     for name in (sets or list(campaign["sets"])):
-        for shard in range(shards):
+        spec = campaign["sets"][name]
+        n_shards = int(shards or spec.get("shards", campaign["shards_per_set"]))
+        total = int(spec.get("trials_per_state", campaign["trials_per_state"]))
+        per_shard = trials if trials is not None else total // n_shards
+        if trials is None and per_shard * n_shards != total:
+            raise ValueError(f"set {name}: trials_per_state must divide into its shards")
+        for shard in range(n_shards):
             text, row = macro(campaign, name, shard, per_shard)
             (out / row["macro"]).write_text(text)
             rows.append(row)

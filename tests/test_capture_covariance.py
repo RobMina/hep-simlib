@@ -85,3 +85,59 @@ def test_a_shifted_placement_is_detected(tmp_path, tables):
     moved = {**big, "exits": {**big["exits"], "position": big["exits"]["position"] + [60., 0, 0]}}
     result = covariance.compare(big, moved, {"exit_x": [-240, 240, 48]}, min_entries=50)
     assert result["bonferroni_min_p"] < 1e-6
+
+
+def _showers(rng, n, shift=0.0):
+    """Synthetic outcomes: ~5 exits per trial whose positions share a per-trial offset (strong within-trial
+    correlation, as a shower's exits), one class."""
+    k = rng.poisson(5, n) + 1
+    trial = np.repeat(np.arange(n), k)
+    common = rng.normal(0, 50, n)[trial]
+    x = common + rng.normal(0, 2, len(trial)) + shift
+    pos = np.column_stack([x, np.zeros_like(x), np.zeros_like(x)])
+    mom = np.tile([1.0, 0, 0], (len(trial), 1))
+    return dict(trials=dict(cls=np.full(n, "c", object), edep=rng.exponential(5, n), exits=k,
+                            cluster=np.full(n, -1, np.int64)),
+                hits=np.zeros((n, 1), bool), nvol=1,
+                exits=dict(trial=trial, pdg=np.full(len(trial), 22), kinetic=np.ones(len(trial)), position=pos,
+                           momentum=mom, time=np.ones(len(trial))))
+
+
+def _resample(bank, rng, n):
+    """A replay-like sample: n draws with replacement from the bank's trials, clustered on the drawn trial."""
+    pick = rng.integers(0, len(bank["trials"]["edep"]), n)
+    rows = [np.flatnonzero(bank["exits"]["trial"] == p) for p in pick]
+    idx = np.concatenate(rows)
+    out = dict(trials={k: v[pick] for k, v in bank["trials"].items()}, hits=bank["hits"][pick], nvol=1)
+    out["trials"]["cluster"] = pick.astype(np.int64)
+    out["exits"] = {k: v[idx] for k, v in bank["exits"].items()}
+    out["exits"]["trial"] = np.repeat(np.arange(n), [len(r) for r in rows])
+    return out
+
+
+SHOWER_SPEC = {"exits": [-0.5, 14.5, 15], "exit_x": [-245, 235, 48]}
+
+
+def test_robust_comparison_is_calibrated_for_correlated_exits():
+    rng = np.random.default_rng(11)
+    a, b = _showers(rng, 2000), _showers(rng, 2000)
+    old = covariance.compare(a, b, SHOWER_SPEC, min_entries=50)
+    new = covariance.compare_robust(a, b, SHOWER_SPEC)
+    assert old["bonferroni_min_p"] < 1e-3        # entries counted as independent: a false failure
+    assert new["bonferroni_min_p"] > 1e-3 and new["family"] == 2
+
+
+def test_robust_comparison_is_calibrated_for_a_resampled_bank():
+    rng = np.random.default_rng(12)
+    bank, reference = _showers(rng, 1000), _showers(rng, 2000)
+    replay = _resample(bank, rng, 2000)
+    result = covariance.compare_robust(reference, replay, SHOWER_SPEC)
+    assert result["bonferroni_min_p"] > 1e-3
+    m = result["mean_edep"]["c"]
+    assert abs(m["ratio"] - 1) < 4 * m["err"]
+
+
+def test_robust_comparison_detects_a_shift():
+    rng = np.random.default_rng(13)
+    a, b = _showers(rng, 2000), _showers(rng, 2000, shift=15.0)
+    assert covariance.compare_robust(a, b, SHOWER_SPEC)["bonferroni_min_p"] < 1e-6

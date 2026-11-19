@@ -65,7 +65,8 @@ def from_capture(tables, threshold=0.1):
                  momentum=np.vstack([vectors(s, "post_p", "xyz")[first], vectors(t, "begin_p", "xyz")[born]]),
                  time=np.r_[s["post_time"][first], t["begin_time"][born]] - t0[ex_event])
     return dict(trials=dict(cls=_classes(t["pdg"][primary], kin), edep=edep,
-                            exits=np.bincount(ex_event, minlength=len(events))),
+                            exits=np.bincount(ex_event, minlength=len(events)),
+                            cluster=np.full(len(events), -1, np.int64)),
                 hits=per_volume > threshold, exits=exits, nvol=nvol)
 
 
@@ -91,12 +92,14 @@ def from_replay(library, tables, rng, *, dtype=np.float64, threshold=0.1):
                     position=vectors(t, "entrance_", "xyz")[primary], momentum=vectors(t, "entrance_p", "xyz")[primary],
                     energy=t["entrance_energy"][primary].astype(float), time=t["entrance_time"][primary].astype(float))
     steps, exits = [], []
+    drawn = np.full(n, -1, np.int64)
     for g in range(groups.max() + 1 if n else 0):
         rows = np.flatnonzero(groups == g)
         placement = cr.Placement(library.component, 0, rot[rows[0]].reshape(3, 3), tra[rows[0]],
                                  np.arange(library.component.volumes))
         r = cr.replay(library, placement, {k: v[rows] for k, v in incoming.items()}, np.zeros(len(rows), np.int64),
                       rng, next_track=2, dtype=dtype)
+        drawn[rows] = r.trials
         steps.append((r.steps["event"][:, 0], r.steps["volume"], np.asarray(r.steps["edep"], float)))
         trial = r.exits["event"][:, 0]
         exits.append(dict(trial=trial, pdg=r.exits["pdg"],
@@ -112,27 +115,33 @@ def from_replay(library, tables, rng, *, dtype=np.float64, threshold=0.1):
     np.add.at(per_volume, (trial_s, volume), edep_s)
     return dict(trials=dict(cls=_classes(incoming["pdg"], t["entrance_kinetic"][primary]),
                             edep=np.bincount(trial_s, weights=edep_s, minlength=n),
-                            exits=np.bincount(ex["trial"], minlength=n)),
+                            exits=np.bincount(ex["trial"], minlength=n), cluster=drawn),
                 hits=per_volume > threshold, exits=ex, nvol=library.component.volumes)
 
 
 def _observables(o, spec):
     """{observable: (values per entry, class per entry)} for the declared observables."""
+    return {k: (v, o["trials"]["cls"][t]) for k, (v, t) in _entries(o, spec).items()}
+
+
+def _entries(o, spec):
+    """{observable: (values per entry, trial index per entry)} for the declared observables."""
     tr, ex = o["trials"], o["exits"]
-    cls_e = tr["cls"][ex["trial"]]
     p = np.linalg.norm(ex["momentum"], axis=1)
     direction = ex["momentum"] / np.where(p > 0, p, 1)[:, None]
     hit_trial, hit_volume = np.nonzero(o["hits"])
     species = np.where(ex["pdg"] == 22, 0, np.where(np.abs(ex["pdg"]) == 11, 1, 2))
+    trials = np.arange(len(tr["edep"]))
+    te = ex["trial"]
     values = {
-        "edep_log10": (np.log10(np.maximum(tr["edep"], ZERO)), tr["cls"]),
-        "exits": (tr["exits"].astype(float), tr["cls"]),
-        "hit_volume": (hit_volume.astype(float), tr["cls"][hit_trial]),
-        "exit_species": (species.astype(float), cls_e),
-        "exit_kinetic_log10": (np.log10(np.maximum(ex["kinetic"], ZERO)), cls_e),
-        "exit_time_log10": (np.log10(np.maximum(ex["time"], ZERO)), cls_e),
-        **{f"exit_{a}": (ex["position"][:, i], cls_e) for i, a in enumerate("xyz")},
-        **{f"exit_u{a}": (direction[:, i], cls_e) for i, a in enumerate("xyz")},
+        "edep_log10": (np.log10(np.maximum(tr["edep"], ZERO)), trials),
+        "exits": (tr["exits"].astype(float), trials),
+        "hit_volume": (hit_volume.astype(float), hit_trial),
+        "exit_species": (species.astype(float), te),
+        "exit_kinetic_log10": (np.log10(np.maximum(ex["kinetic"], ZERO)), te),
+        "exit_time_log10": (np.log10(np.maximum(ex["time"], ZERO)), te),
+        **{f"exit_{a}": (ex["position"][:, i], te) for i, a in enumerate("xyz")},
+        **{f"exit_u{a}": (direction[:, i], te) for i, a in enumerate("xyz")},
     }
     unknown = set(spec) - set(values)
     require(not unknown, f"undeclared observables {sorted(unknown)}")
@@ -177,6 +186,91 @@ def compare(reference, candidate, spec, *, min_entries=50):
         err = ratio * np.hypot(a.std(ddof=1) / np.sqrt(len(a)) / a.mean(),
                                b.std(ddof=1) / np.sqrt(len(b)) / max(b.mean(), 1e-300))
         means[k] = dict(ratio=float(ratio), err=float(err), reference=len(a), candidate=len(b))
+    worst_mean = max(means.values(), key=lambda m: abs(m["ratio"] - 1) / m["err"] if m["err"] > 0 else 0) if means else None
+    return dict(tests=tests, untested=untested, family=family,
+                bonferroni_min_p=min(1.0, worst["p"] * family) if worst else None, worst=worst,
+                mean_edep=means, worst_mean_edep=worst_mean)
+
+
+# ------------------------------------------------------------------ cluster-robust comparison (A3 v2)
+def _rates(o, entries, trials, edges):
+    """Per-trial entry counts per bin for the given trials: (rate vector, cluster-robust covariance of the rate,
+    entries per bin). A G4 trial is its own cluster; replayed trials that drew the same bank trial form one cluster
+    (they are the same recorded outcome), so neither correlated entries within a trial nor repeated draws are
+    counted as independent."""
+    values, trial = entries
+    local = -np.ones(len(o["trials"]["edep"]), np.int64)
+    local[trials] = np.arange(len(trials))
+    keep = local[trial] >= 0
+    n, nb = len(trials), len(edges) - 1
+    h = np.zeros((n, nb))
+    np.add.at(h, (local[trial[keep]], np.searchsorted(edges, values[keep], side="right") - 1), 1.0)
+    cl = o["trials"]["cluster"][trials]
+    cl = np.where(cl < 0, -1 - np.arange(n), cl)                 # own cluster for every G4 trial
+    codes, inverse = np.unique(cl, return_inverse=True)
+    g = np.zeros((len(codes), nb))
+    np.add.at(g, inverse.ravel(), h)
+    m = np.bincount(inverse.ravel(), minlength=len(codes)).astype(float)
+    r = h.mean(axis=0)
+    u = g - m[:, None] * r
+    c = len(codes)
+    cov = (u.T @ u) / n ** 2 * (c / (c - 1) if c > 1 else 1.0)
+    return r, cov, h.sum(axis=0)
+
+
+def _scalar(o, values, trials):
+    """Mean of a per-trial value over the given trials and its cluster-robust error."""
+    v = values[trials]
+    cl = o["trials"]["cluster"][trials]
+    cl = np.where(cl < 0, -1 - np.arange(len(trials)), cl)
+    codes, inverse = np.unique(cl, return_inverse=True)
+    mean = v.mean()
+    u = np.bincount(inverse.ravel(), weights=v - mean, minlength=len(codes))
+    c = len(codes)
+    return mean, np.sqrt((u @ u) / len(v) ** 2 * (c / (c - 1) if c > 1 else 1.0))
+
+
+def compare_robust(reference, candidate, spec, *, min_bin_entries=10, min_trials=50):
+    """Per class and declared observable: Hotelling T^2 of the per-trial rate vectors over the bins holding at least
+    ``min_bin_entries`` entries on both sides, with cluster-robust covariances (see _rates), its chi2 p-value
+    (k = rank of the summed covariance), and the Bonferroni-corrected minimum over the family; per class, the ratio
+    of mean total deposits with its cluster-robust error. Classes with fewer than ``min_trials`` trials on either side
+    are not tested (listed)."""
+    from scipy.stats import chi2 as chi2_dist
+    ent_r, ent_c = _entries(reference, spec), _entries(candidate, spec)
+    cls_r, cls_c = reference["trials"]["cls"], candidate["trials"]["cls"]
+    classes = sorted(set(cls_r) | set(cls_c))
+    tests, untested, means = [], [], {}
+    for k in classes:
+        tr_r, tr_c = np.flatnonzero(cls_r == k), np.flatnonzero(cls_c == k)
+        if min(len(tr_r), len(tr_c)) < min_trials:
+            untested.append(dict(cls=k, reference=len(tr_r), candidate=len(tr_c)))
+            continue
+        for name, binning in spec.items():
+            edges = _edges(binning)
+            ra, sa, na = _rates(reference, ent_r[name], tr_r, edges)
+            rb, sb, nb = _rates(candidate, ent_c[name], tr_c, edges)
+            use = (na >= min_bin_entries) & (nb >= min_bin_entries)
+            if not use.any():
+                untested.append(dict(cls=k, observable=name, reason="no bin with enough entries"))
+                continue
+            d = (rb - ra)[use]
+            s = (sa + sb)[np.ix_(use, use)]
+            w, v = np.linalg.eigh(s)
+            good = w > w.max() * 1e-10
+            t2 = float(np.sum((v[:, good].T @ d) ** 2 / w[good]))
+            dof = int(good.sum())
+            p = float(chi2_dist.sf(t2, dof))
+            tests.append(dict(observable=name, cls=k, t2=t2, dof=dof, p=p, bins=int(use.sum()),
+                              reference=len(tr_r), candidate=len(tr_c)))
+        ma, ea = _scalar(reference, reference["trials"]["edep"], tr_r)
+        mb, eb = _scalar(candidate, candidate["trials"]["edep"], tr_c)
+        if ma > 0:
+            ratio = mb / ma
+            means[k] = dict(ratio=float(ratio), err=float(ratio * np.hypot(ea / ma, eb / mb if mb > 0 else 0.0)),
+                            reference=len(tr_r), candidate=len(tr_c))
+    family = len(tests)
+    worst = min(tests, key=lambda x: x["p"]) if tests else None
     worst_mean = max(means.values(), key=lambda m: abs(m["ratio"] - 1) / m["err"] if m["err"] > 0 else 0) if means else None
     return dict(tests=tests, untested=untested, family=family,
                 bonferroni_min_p=min(1.0, worst["p"] * family) if worst else None, worst=worst,

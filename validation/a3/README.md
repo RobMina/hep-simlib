@@ -63,3 +63,30 @@ python validation/a3/analyze.py RUN_DIR --output record.json
 
 `campaign.py macros RUN_DIR --trials 3 --shards 1 --sets A,B,R2` is the pilot the CI runs on every push (the chain end
 to end on real Geant4 output; too small to test the criteria). Batch sizes come from a measured pilot shard.
+
+## Result of v1 and the v2 campaign
+
+**v1 (criteria.json, run 2026-11-19): tested, not closed.** Mean deposits agreed in every set (worst class within
+1.8 errors), but the shape criterion failed for B in float32, T, R1 and TR, and passed only for R2 and for B in
+float64. A post-hoc diagnostic on the same data (not a verdict) traced two causes, both in the declared test, not in
+the bank:
+
+1. *Bin edges on exact values.* The 10 mm position bins from -240 mm put edges on the module's faces (+-200, +-30,
+   +-110 mm) and the direction bins put edges at 0 and +-1, where straight-through particles sit exactly; rounding at
+   the 1e-13 level then moved whole populations across edges (float32 casts, the subtracted translation, the 90 deg
+   rotation built with cos 90 deg = 6e-17). With the edges moved off these values, float32 and float64 agreed exactly
+   and R1's p = 1e-110 vanished; R2, whose faces are not axis-aligned, was the one set without the artefact.
+2. *A miscalibrated statistic.* The chi2 "UU" test counts every exit as an independent entry (a shower's exits are
+   correlated) and the replay draws 200 trials per state with replacement from a 200-trial bank (about a third are
+   repeats); both inflate chi2. The nominal null B then failed too (Bonferroni min p 2.4e-4 after the edge fix), with
+   the multi-exit classes (50 MeV e+, 500 MeV p) worst.
+
+**v2 (campaign_v2.json, criteria_v2.json), declared before any v2 capture:** edges off the exact values; a
+cluster-robust Hotelling T^2 per (class, observable) (a Geant4 trial is one cluster, replayed trials that drew the
+same bank trial are one cluster); a Geant4-vs-Geant4 null (B2 against C2, no replay) that measures the test's own
+false-failure rate; a 1,000-trial bank (A2) to cut repeats; fresh seeds for every set (217,800 events).
+
+```bash
+python validation/a3/campaign.py macros RUN_DIR --campaign validation/a3/campaign_v2.json      # 110 shards
+python validation/a3/analyze.py RUN_DIR --criteria validation/a3/criteria_v2.json --output record_v2.json
+```
