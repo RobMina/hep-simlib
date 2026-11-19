@@ -161,10 +161,9 @@ def trials(tables, links, expected_events, **audit_options):
 GENERATOR_SECTIONS = ("geant4|", "physics|", "cuts|", "material|")
 
 
-def recorded_generator(samples):
+def recorded_generator(samples, manifests):
     """The generator entry when every sample's process manifest records the Geant4 version, the physics list, the
     production cuts and the materials (as hepsimlib-recorder writes it); None otherwise (it stays unrecorded)."""
-    manifests = [x.get("manifest", "") for x in samples]
     if not manifests or not all(all(f"\n{k}" in m for k in GENERATOR_SECTIONS) for m in manifests):
         return None
     lines = manifests[0].splitlines()
@@ -186,26 +185,34 @@ def _dataset(path, relative_to):
     return path.relative_to(root).as_posix()
 
 
+def read_capture(path, directory="capture"):
+    """The default reader: (tables, links, runinfo or None) of one capture file."""
+    return read(path, directory), read_links(path, directory), read_runinfo(path, directory)
+
+
 def library_from_captures(paths, expected_events, *, relative_to=None, sample_info=None, directory="capture",
-                          **audit_options):
-    """The Library of one component type from audited capture files, and the source/geometry provenance.
+                          reader=None, record_generator=True, **audit_options):
+    """The Library of one component type from audited capture files, and the recorded provenance: source and
+    geometry, plus the generator when record_generator and every manifest records it (see recorded_generator).
 
     Datasets are named relative to relative_to (default: the working directory). sample_info, one dict per path,
     adds the caller's description of each sample (e.g. its campaign state) without replacing recorded keys.
+    reader(path) -> (tables, links, runinfo) reads another recorder's files (default: read_capture in directory);
+    audit_options (checks, resource_processes) go to the audit.
     """
+    reader = reader or (lambda path: read_capture(path, directory))
     require(len(paths) > 0, "no capture files")
     sample_info = list(sample_info) if sample_info is not None else [{}] * len(paths)
     require(len(sample_info) == len(paths), "sample_info needs one entry per capture")
-    pieces, samples = [], []
+    pieces, samples, manifests = [], [], []
     for path, extra in zip(paths, sample_info):
-        tables, links = read(path, directory), read_links(path, directory)
+        tables, links, runinfo = reader(path)
         component, inventory, *rest, info = trials(tables, links, expected_events, **audit_options)
-        runinfo = read_runinfo(path, directory)
         if runinfo is not None:
             require(len(runinfo["seed"]) == 1, f"{path}: runinfo must have one row")
             info.update(seed=int(runinfo["seed"][0]), physics_list=str(runinfo["physicsList"][0]),
                         gdml=str(runinfo["gdml"][0]))
-        info["manifest"] = str(links["manifest"]["manifest"][0]) if len(links["manifest"]["manifest"]) else ""
+        manifests.append(str(links["manifest"]["manifest"][0]) if len(links["manifest"]["manifest"]) else "")
         if pieces:
             require(component == pieces[0][0], f"{path}: different component type")
             require(_same_inventory(inventory, pieces[0][1]) and inventory_hash(inventory) == inventory_hash(pieces[0][1]),
@@ -233,31 +240,33 @@ def library_from_captures(paths, expected_events, *, relative_to=None, sample_in
                               "volumes, materials, solids, densities and mother-relative placements (to 1e-9)",
                       physics=component.physics, half_size=list(component.half_size), volumes=component.volumes,
                       volume_names=[str(x) for x in inventory["name"]]))
+    generator = recorded_generator(samples, manifests) if record_generator else None
+    if generator is not None:
+        provenance["generator"] = generator
     return library, provenance
 
 
 def convert(paths, output, expected_events, *, relative_to=None, sample_info=None, configuration=None,
-            directory="capture", audit_options=None, **provenance):
+            directory="capture", reader=None, record_generator=True, audit_options=None, **provenance):
     """Write the bank of the given captures with component_response.save_library; returns its manifest.
 
     provenance gives only SUPPLIED_FIELDS, plus source and geometry entries that add keys beside the recorded ones and
     cannot replace them. Each of source and geometry lists its keys read from the captures ("recorded") and those the
     caller supplied ("supplied"); a sample lists its supplied keys. configuration names the bank
     <bank_name>.<configuration>, so banks of one component type get distinct names. Supplied seeds must name every
-    sample's dataset.
+    sample's dataset. reader, record_generator and audit_options: see library_from_captures.
     """
     require("generator" not in provenance, "generator stays unrecorded until the capture records its physics-list, "
                                            "material and cut hashes; it cannot be supplied")
     unknown = set(provenance) - {*SUPPLIED_FIELDS, "source", "geometry"}
     require(not unknown, f"provenance may give only {SUPPLIED_FIELDS} plus source/geometry keys, not {sorted(unknown)}")
     library, recorded = library_from_captures(paths, expected_events, relative_to=relative_to, sample_info=sample_info,
-                                              directory=directory, **(audit_options or {}))
+                                              directory=directory, reader=reader, record_generator=record_generator,
+                                              **(audit_options or {}))
     samples = recorded["source"]["samples"]
     if "seeds" not in provenance and samples and all("seed" in x for x in samples):
         provenance["seeds"] = {x["dataset"]: x["seed"] for x in samples}      # recorded by the recorder
-    generator = recorded_generator(samples)
-    for x in samples:
-        x.pop("manifest", None)
+    generator = recorded.pop("generator", None)
     if generator is not None:
         provenance["generator"] = generator
     base = cr.bank_name(library.component)

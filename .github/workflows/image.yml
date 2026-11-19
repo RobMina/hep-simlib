@@ -1,0 +1,32 @@
+# Builds the recorder image whenever the recorder or its definition changes; the build's %test records the toy module
+# inside the finished image. Root on the runner (Ubuntu 24.04 restricts unprivileged user namespaces).
+name: image
+on:
+  push:
+    branches: [main]
+    paths: ["recorder/**", ".github/workflows/image.yml"]
+  pull_request:
+    paths: ["recorder/**", ".github/workflows/image.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: apptainer build (hepsimlib-g4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Apptainer (official PPA)
+        run: |
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apptainer
+          apptainer --version
+      - name: Build (runs %test)
+        run: |
+          sudo apptainer build --mksquashfs-args "-mem 2G -processors 4" hepsimlib-g4.sif recorder/container/hepsimlib-g4.def
+          ls -la hepsimlib-g4.sif
