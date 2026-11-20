@@ -47,13 +47,14 @@ for water Cherenkov detectors. They are reimplemented here, and no LUCiD code is
 ### 2.1 `hepsimlib.fit`
 
 ```python
-res = fit.gauss_newton(terms, theta0, *, mask=None, scale=None, max_iter=100, tol=..., damping=1e-3)
-res = fit.lbfgs(value_and_grad, theta0, *, mask=None, scale=None, max_iter=500, history=10, tol=...)
-# terms(theta) -> GNTerms(nll, grad [p], info [p, p]);  value_and_grad(theta) -> (nll, grad [p])
-# res: FitResult(theta, nll, grad, info, converged, iterations, rejected_steps, history, message)
+res = fit.gauss_newton(objective, theta0, *, fixed=None, scale=None, max_iter=100, tol=1e-10, damping=1e-3)
+res = fit.lbfgs(objective, theta0, *, fixed=None, scale=None, max_iter=500, history=10, gtol=1e-6)
+# objective: value(theta), value_and_grad(theta) -> (nll, grad [p]) and, for GN, terms(theta) -> GNTerms(nll, grad, info)
+# res: FitResult(theta, nll, grad, info, converged, iterations, rejected_steps, decrement, history, message)
 
-terms = fit.least_squares(residual_fn, jac="fwd" | "fd" | callable)   # whitened residuals r(theta)
-terms = fit.poisson(expected_fn, observed, jac=...)                    # Fisher scoring on expected counts
+obj = fit.least_squares(residual_fn, jac="fwd" | "fd" | callable)     # whitened residuals r(theta); fit.gaussian(...)
+obj = fit.poisson(expected_fn, observed, jac=...)                      # Fisher scoring on expected counts
+obj = fit.scalar(nll_fn, grad="rev" | "fd" | callable)                 # L-BFGS only
 J = fit.jacobian(fn, theta, method="fwd" | "rev" | "fd")              # jacfwd under highest precision; FD without JAX
 
 # per-channel nuisances, profiled
@@ -64,11 +65,13 @@ shift, centred = fit.gauge(values, weights=None)                       # sum-to-
 problem = fit.ChannelProblem(channel, n_channels, model, charge=fit.Observed(q, family="poisson"),
                              time=fit.Observed(t, sigma=...), gain=True, offset=True)
 res = fit.fit_channels(problem, theta0, *, method="gn" | "lbfgs", profile="closed_form" | "schur",
-                       gauge=dict(log_gain="theta name or None", offset="theta name or None"), mask=..., scale=...)
-# model(theta, aux) -> dict(charge=M [n], time=T [n]); res adds log_gain [C], offset [C] and their errors
+                       gauge=dict(log_gain=index or None, offset=index or None), gauge_weights=None | "information",
+                       fixed=..., scale=...)
+# model(theta, aux) -> dict(charge=M [n], time=T [n]); coupled=True: model(theta, aux, log_gain_rows, offset_rows)
+# res: theta, log_gain [C], offset [C], their errors, cov_theta, gauge_shift, gauge_nll_change
 
-cov = fit.covariance(info, mask=None)                                  # inverse of the free block, NaN if singular
-crb = fit.channel_crb(problem, theta, log_gain, offset, gauge=...)     # theta covariance, nuisances marginalised
+cov = fit.covariance(info, fixed=None)                                 # inverse of the free block, NaN if singular
+cov, nu_err = fit.channel_crb(problem, theta, nu, gauge=...)          # theta covariance, nuisances marginalised
 ```
 
 - **Gauss-Newton** is Levenberg-Marquardt-damped. A step is solved on the free parameters,
@@ -78,7 +81,7 @@ crb = fit.channel_crb(problem, theta, log_gain, offset, gauge=...)     # theta c
 - **L-BFGS** uses two-loop recursion with a backtracking line search, rolls back a non-finite trial, and skips
   curvature pairs with `s.y <= 0`. It is for objectives whose information matrix is not available, such as the
   censored likelihood.
-- **Hygiene, common to both.** `mask` freezes parameters at their start values, bit for bit. `scale` is the
+- **Hygiene, common to both.** `fixed` freezes parameters at their start values, bit for bit. `scale` is the
   per-parameter preconditioning: the driver works in `u = (theta - theta0) / scale`, with
   `scale="auto"` = `diag(H0)^(-1/2)`. A non-finite value or gradient is never accepted. The history records every
   accepted step.
