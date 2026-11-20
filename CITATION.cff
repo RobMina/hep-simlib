@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "hep-simlib: checked response libraries and component interaction banks for HEP fast simulation"
+version: "0.1.0"
+date-released: "2026-11-20"
+authors:
+  - family-names: Mina
+    given-names: Rob
+    affiliation: "University of Virginia"
+    orcid: "https://orcid.org/0000-0003-2241-8566"
+repository-code: "https://github.com/RobMina/hep-simlib"
+license: "Apache-2.0"
+abstract: >-
+  hep-simlib provides checked response libraries for fast simulation (manifests, content hashes, domain accounting, a fidelity vocabulary) and component interaction banks: complete Geant4 trials of a detector component recorded once and replayed exactly in any rigid placement, in Python (float64 and float32) and inside Geant4 through a fast-simulation model. It includes an experiment-neutral Geant4 recorder and validation campaigns on a public toy module.
+keywords:
+  - "fast simulation"
+  - "Geant4"
+  - "detector simulation"
+  - "response libraries"
+  - "particle physics"
+  - "JAX"
