@@ -107,14 +107,15 @@ cov, nu_err = fit.channel_crb(problem, theta, nu, gauge=...)          # theta co
 ```python
 rep = testing.check_gradient(f, x, grad=None, *, directions="axes" | int, rel_step=None, rtol=None, atol=None)
 # central differences of a scalar f against grad (or jax.grad(f)); step and tolerances default by dtype;
-# rep.max_rel_error, rep.per_direction; rep.ok; assert_gradient(...) raises with the table
+# rep.max_rel_error, rep.error (per direction, <= 1 passes); rep.ok; assert_gradient(...) raises with the table
 rep = testing.check_jacobian(F, x, jac=None, ...)        # same for vector functions (fwd or user Jacobian)
 sweep = testing.gradient_sweep(f, x, direction, span, n)  # 1D AD vs FD along a line (kinks, plateaus)
 
-res = testing.closure(simulate, fit, truth, seeds, *, names=None)   # simulate(truth, rng) -> data; fit(data) -> (est, err)
+res = testing.closure(simulate, fit, truth, seeds, *, names=())   # simulate(truth, rng) -> data; fit(data) -> (est, err)
 res.pulls, res.bias, res.pull_mean, res.pull_std, res.coverage(1.0); res.assert_unbiased(k=3)
 res = testing.mismatch_closure(simulate_other, fit, truth, seeds)   # the generator is not the fitted model: reports, never asserts by default
-testing.expected_gradient_zero(nll, truth, expected_data, *, atol=...)   # grad of the NLL on Asimov data at truth
+testing.expected_score_zero(nll, truth, *, grad=None, info=None, tol=1e-8)   # alias expected_gradient_zero: NLL of Asimov data
+testing.mean_score_zero(score, simulate, truth, seeds, *, k=4)    # the score averages to zero over sampled data
 ```
 
 Pytest is not required to import `hepsimlib.testing`. The assertion helpers raise `AssertionError` with a readable
@@ -123,8 +124,8 @@ table, so any package's tests can call them.
 ### 2.3 `hepsimlib.likelihood`
 
 Every function takes and returns arrays of one backend (`xp` = NumPy or `jax.numpy`, inferred from the inputs), so
-JAX callers get autodiff and NumPy callers get values. Analytic NumPy gradients come with the censored likelihood,
-because it is the one NumPy users fit with.
+JAX callers get autodiff and NumPy callers get values. Analytic NumPy gradients come with the detection
+probabilities and the censored likelihood, because those are the ones NumPy users fit with.
 
 ```python
 likelihood.log_p_detect(mu, threshold)          # log P(N >= threshold), N ~ Poisson(mu), integer threshold; stable at both ends
@@ -144,8 +145,9 @@ delay = likelihood.ExponentialDelay(tau);  likelihood.ExpGaussDelay(tau, sigma) 
 - **Censored crossing** (seen or silent per expected crossing). The log charge is Normal with mean `mu_logq` and
   width `sigma_q`. The time given the charge is Normal with mean `mu_t - walk (logq - logq_ref)` and width
   `sigma_t`. A crossing is selected if `logq >= log_threshold` and `t_lo <= t <= t_hi`. A seen crossing contributes
-  the joint density; a silent one contributes `log P(miss)`, where the miss integral over the log charge uses fixed
-  Gauss-Legendre nodes (exact with one node when `walk = 0`). The predictors come from any forward: an analytic
+  the joint density; a silent one contributes `log P(miss)`. `(logq, t)` is bivariate normal, so `P(miss)` is
+  `Phi(a)` plus two bivariate-normal orthant probabilities (Genz's algorithm), exact at double precision with a
+  closed-form gradient. The predictors come from any forward: an analytic
   surrogate today, `hepsimlib.expected` tomorrow. The widths are parameters, never constants.
 - **Order statistic.** For a Poisson number of arrivals with mean `mu` and arrival-time CDF `F`, the k-th arrival
   has `P(T_k <= t) = P(N(t) >= k)`, where `N(t) ~ Poisson(mu F(t - t0))`. Its density is
@@ -158,12 +160,14 @@ table = expected.TableResponse.from_library(lib, yield_array="yield", delay_arra
                                             position_axes=("x", "y"), delay_axis="delay")
 dev = table.to_device(dtype)                                     # float32 or float64 (JAX); table itself is the NumPy host twin
 resp = table.expected(steps, *, yield_scale=1.0, channel_scale=None)       # NumPy, float64
-resp = expected.expected_jax(dev, steps, yield_scale=..., channel_scale=...)   # jit-able, differentiable
+resp = dev.expected(steps, yield_scale=..., channel_scale=...)            # JAX: jit-able, differentiable
 # steps: Steps(position [n, d] in the table's frame, edep [n], time [n], mask [n] optional)
 resp.counts          # [C] expected photoelectrons per channel
 resp.cdf(t)          # [..., C] arrival-time CDF (normalised), piecewise linear in t
 resp.pdf(t)          # [..., C] its density
 resp.binned(edges)   # [C, nbins] expected counts per time bin (exact integral of the CDF)
+resp.cumulative(t)   # [..., C] expected photoelectrons arrived by t;  resp.channel(c): a delay object for the likelihood
+arrays, fields = expected.table_fields(axes, yield_, delay_edges, delay_cdf)   # describe a table for library.store
 ```
 
 - **Table.** A `hepsimlib.library` file with position axes (bin edges, as every library has). It holds
@@ -174,8 +178,9 @@ resp.binned(edges)   # [C, nbins] expected counts per time bin (exact integral o
   cells, the interpolation holds the end value (stated in the manifest). Beyond the edges, the axis `policy`
   applies (`clip`, `refuse` before any work, `nan`). Position gradients are therefore defined everywhere and are
   exact piecewise derivatives.
-- **Deterministic.** No random numbers. The mixture over steps is kept exact: `resp.cdf` sums the steps'
-  interpolated delay CDFs, shifted by their step times and weighted by their expected counts.
+- **Deterministic.** No random numbers. What is interpolated is the time-resolved expected count
+  `yield * F`: a step contributes `edep * sum_corners w yield F(t - t_s)`. A sampled chain that picks each
+  photon's corner cell with probability `w * yield` has exactly this mean. The mixture over steps is kept exact.
 
 ## 3. What stays experiment-specific
 
