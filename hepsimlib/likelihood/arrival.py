@@ -116,7 +116,8 @@ def _log_pdf(delay, d):
         return delay.log_pdf(d)
     b = backend(d)
     p = delay.pdf(d)
-    return b.xp.log(b.xp.where(p > 0, p, 0.0))
+    pos = p > 0
+    return b.xp.where(pos, b.xp.log(b.xp.where(pos, p, 1.0)), -b.xp.inf)
 
 
 def arrival_log_cdf(t, t0, mu, delay, k=1):
