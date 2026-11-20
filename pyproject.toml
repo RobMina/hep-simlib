@@ -15,6 +15,7 @@ dependencies = ["numpy"]
 jax = ["jax"]
 capture = ["pandas", "uproot", "awkward"]
 validation = ["scipy"]
+likelihood = ["scipy"]
 test = ["pytest"]
 
 [tool.setuptools.packages.find]
