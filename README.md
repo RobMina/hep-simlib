@@ -22,7 +22,7 @@ library can be checked, cited, distributed and compared the same way, whatever e
 | `hepsimlib.profile` | the few per-experiment settings: allowed subsystems, the device-float and cache variables, the release URL, bank names |
 
 Specifications: [libraries](docs/libraries.md), [component response](docs/component-response.md),
-[recording component trials](docs/component-training.md), [the recorder and the capture tables](docs/recorder.md).
+[recording component trials](docs/component-training.md), [the recorder and the capture tables](docs/recorder.md), [differentiable response and calibration](docs/calibration.md) (design).
 
 The package depends on NumPy only; the `*_jax` helpers import JAX when called (extra `jax`). It holds no experiment
 names, data or libraries: an experiment package installs its own profile once and keeps its libraries in its own
