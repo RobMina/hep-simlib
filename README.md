@@ -20,6 +20,7 @@ library can be checked, cited, distributed and compared the same way, whatever e
 | `hepsimlib.capture` | recorder output to banks: the strict capture audit, the per-step and per-event energy accounting, and the converter (extra `capture`: pandas, uproot, awkward) |
 | `recorder/` | `hepsimlib-recorder`, a standalone Geant4 application that records complete trials of any GDML component (a box envelope) in any placement, and an Apptainer definition with Geant4 11.3.2 |
 | `hepsimlib.testing` | test tooling for differentiable paths and fits: central finite-difference gradient and Jacobian checks with dtype-aware tolerances, 1D gradient sweeps, multi-seed closures with pulls, model-mismatch closures, and the zero expected score at the truth |
+| `hepsimlib.expected` | the expected response of table libraries: energy-deposit steps to expected photoelectrons and arrival-time distributions per channel, deterministic, multilinear between cell centres (position gradients for alignment), NumPy float64 or JAX float32/float64 |
 | `hepsimlib.profile` | the few per-experiment settings: allowed subsystems, the device-float and cache variables, the release URL, bank names |
 
 Specifications: [libraries](docs/libraries.md), [component response](docs/component-response.md),
