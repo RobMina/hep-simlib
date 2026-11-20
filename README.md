@@ -68,3 +68,8 @@ python -m pytest -q
 
 The tests are offline and synthetic. CI (`.github/workflows/ci.yml`) runs them on every push to main and every pull
 request, on Python 3.10 to 3.14.
+
+## Citing
+
+Please cite the release you used: `CITATION.cff` holds the metadata (GitHub's "Cite this repository" renders it), and
+each tagged release is archived on Zenodo with its own DOI.
