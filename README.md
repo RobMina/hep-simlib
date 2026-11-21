@@ -1,5 +1,7 @@
 # hep-simlib
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24418708.svg)](https://doi.org/10.5281/zenodo.24418708)
+
 Checked response libraries and component interaction banks for HEP fast simulation, in NumPy.
 
 A fast simulation replaces simulation steps with things it loads and looks up: response tables, shower libraries,
@@ -72,4 +74,5 @@ request, on Python 3.10 to 3.14.
 ## Citing
 
 Please cite the release you used: `CITATION.cff` holds the metadata (GitHub's "Cite this repository" renders it), and
-each tagged release is archived on Zenodo with its own DOI.
+each tagged release is archived on Zenodo with its own DOI. The concept DOI
+[10.5281/zenodo.24418708](https://doi.org/10.5281/zenodo.24418708) covers every version and resolves to the latest one.

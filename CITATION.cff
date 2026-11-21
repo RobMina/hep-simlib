@@ -4,6 +4,7 @@ type: software
 title: "hep-simlib: checked response libraries and component interaction banks for HEP fast simulation"
 version: "0.1.0"
 date-released: "2026-11-20"
+doi: "10.5281/zenodo.24418708"
 authors:
   - family-names: Mina
     given-names: Rob
